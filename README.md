@@ -207,6 +207,9 @@ Source File.
   produce weak matches, and the app warns you when that happens.
 - The dataset has no quantity/amount columns, so quantity shows as n/a;
   the loader still supports those fields for other Excel files.
+- If the input does not state a work scope, **"supply and install" is
+  assumed by default** (a warning says so); write "supply only" etc. to
+  override.
 - Attribute extraction is regex/keyword based — unusual phrasing may miss
   an attribute (it is then simply not scored, never guessed).
 - When a description mentions several materials (e.g. mild steel body with

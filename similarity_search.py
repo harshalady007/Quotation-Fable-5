@@ -36,6 +36,11 @@ class SimilaritySearcher:
 
         clean_query = normalize_text(query)
         input_attrs = extract_attributes(clean_query)
+        # Estimating default: when the input does not state a work scope,
+        # assume supply and installation (dataset items keep their own scope).
+        if input_attrs.get("scope") is None:
+            input_attrs["scope"] = "supply and install"
+            input_attrs["scope_assumed"] = True
 
         query_vec = self.vectorizer.transform([clean_query])
         text_sims = cosine_similarity(query_vec, self.matrix).ravel()

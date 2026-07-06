@@ -110,6 +110,18 @@ def test_search_result_shape():
     assert "bollard" in m["clean_description"]
 
 
+def test_scope_defaults_to_supply_and_install():
+    searcher = SimilaritySearcher(clean_dataset(SAMPLE))
+    # No scope in the input -> assumed supply and install.
+    out = searcher.search("stainless steel handrail 50mm dia brushed", top_k=2)
+    assert out["input_attributes"]["scope"] == "supply and install"
+    assert out["input_attributes"].get("scope_assumed") is True
+    # Explicit scope is respected, not overridden.
+    out = searcher.search("supply only aluminium handrail 40mm dia", top_k=2)
+    assert out["input_attributes"]["scope"] == "supply only"
+    assert "scope_assumed" not in out["input_attributes"]
+
+
 def test_empty_query_rejected():
     searcher = SimilaritySearcher(clean_dataset(SAMPLE))
     with pytest.raises(SearchError):

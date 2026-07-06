@@ -32,6 +32,11 @@ class PricingEngine:
         matches = search["matches"]
 
         warnings = []
+        if search["input_attributes"].get("scope_assumed"):
+            warnings.append(
+                "No work scope stated in the input; assumed 'supply and "
+                "install' by default. Mention e.g. 'supply only' to override."
+            )
         if search["weak_matches"]:
             warnings.append(
                 f"Best match similarity is only {search['best_score']:.2f}; "
