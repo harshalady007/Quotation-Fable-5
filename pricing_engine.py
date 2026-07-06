@@ -12,15 +12,21 @@ from similarity_search import SimilaritySearcher
 logger = logging.getLogger(__name__)
 
 
-def select_pricing_matches(matches: list) -> list:
+def select_pricing_matches(matches: list, input_type: str | None = None) -> list:
     """Pick the fixed set of matches the price is computed from.
 
     Independent of how many matches the user displays: takes matches whose
     score is within PRICING_RELATIVE_CUTOFF of the best score, capped at
-    PRICING_MAX_MATCHES, with at least PRICING_MIN_MATCHES.
+    PRICING_MAX_MATCHES, with at least PRICING_MIN_MATCHES. When the input's
+    item type is recognized and same-type matches exist, only those are
+    eligible — a planter is priced from planters, never from litter bins.
     """
     if not matches:
         return []
+    if input_type:
+        same_type = [m for m in matches if m.get("item_type") == input_type]
+        if same_type:
+            matches = same_type
     best = matches[0]["similarity_score"]
     cutoff = best * config.PRICING_RELATIVE_CUTOFF
     selected = [m for m in matches
@@ -52,13 +58,21 @@ class PricingEngine:
         pool_size = max(int(top_k), config.PRICING_MAX_MATCHES)
         search = self.searcher.search(input_description, top_k=pool_size)
         pool = search["matches"]
-        pricing_matches = select_pricing_matches(pool)
+        input_type = search["input_attributes"].get("item_type")
+        pricing_matches = select_pricing_matches(pool, input_type)
         pricing_ranks = {m["rank"] for m in pricing_matches}
         matches = pool[:max(int(top_k), 1)]
         for m in matches:
             m["used_for_pricing"] = m["rank"] in pricing_ranks
 
         warnings = []
+        if input_type and not any(m.get("item_type") == input_type
+                                  for m in pricing_matches):
+            warnings.append(
+                f"No historical items of type '{input_type}' were found in "
+                "the dataset; the price is based on the closest other items "
+                "and should be treated with extra caution."
+            )
         if search["input_attributes"].get("scope_assumed"):
             warnings.append(
                 "No work scope stated in the input; assumed 'supply and "

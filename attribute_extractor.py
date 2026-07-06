@@ -6,6 +6,44 @@ All extraction runs on text already normalized by cleaner.normalize_text.
 
 import re
 
+# What the item fundamentally IS. Checked in order; first hit wins, so more
+# specific phrases come before generic ones. Matching a wrong item type is
+# penalized harder than any other attribute.
+ITEM_TYPES = [
+    ("litter bin", ["litter bin", "waste bin", "trash bin", "garbage bin",
+                    "dust bin", "dustbin", "trash can", "recycling bin"]),
+    ("planter", ["planter pot", "planter box", "planter", "flower pot",
+                 "flower box", "plant pot", "plant box"]),
+    ("bench", ["bench"]),
+    ("bollard", ["bollard"]),
+    ("bike rack", ["bike rack", "cycle stand", "bicycle stand", "cycle rack",
+                   "bike stand", "bicycle rack"]),
+    ("shade structure", ["shade structure", "pergola", "gazebo", "shade sail",
+                         "canopy"]),
+    ("handrail", ["handrail", "hand rail"]),
+    ("balustrade", ["balustrade", "guardrail", "railing"]),
+    ("fence", ["fence", "fencing"]),
+    ("gate", ["gate"]),
+    ("signage", ["signage", "sign board", "wayfinding", "sign"]),
+    ("table", ["picnic table", "table"]),
+    ("drinking fountain", ["drinking fountain", "water fountain"]),
+    ("tree grate", ["tree grate", "tree grille", "tree guard"]),
+    ("play equipment", ["play equipment", "playground equipment", "swing",
+                        "slide", "seesaw", "climbing frame", "play unit"]),
+    ("outdoor gym", ["outdoor gym", "fitness equipment", "gym equipment",
+                     "exercise equipment"]),
+    ("shelter", ["bus shelter", "shelter", "kiosk"]),
+    ("flagpole", ["flagpole", "flag pole"]),
+    ("bowl", ["concrete bowl", "bowl"]),
+    ("ladder", ["ladder"]),
+    ("grating", ["grating", "grille"]),
+]
+
+_ITEM_TYPE_PATTERNS = [
+    (canonical, re.compile(r"\b" + re.escape(syn) + r"\b"))
+    for canonical, syns in ITEM_TYPES for syn in syns
+]
+
 MATERIALS = [
     "stainless steel", "mild steel", "carbon steel", "galvanized", "aluminium",
     "concrete", "uhpc", "precast", "timber", "wood", "hardwood", "glass",
@@ -101,11 +139,17 @@ def extract_attributes(text: str) -> dict:
     """
     t = text or ""
     attrs = {
+        "item_type": None,
         "material": None, "finish": None, "grade": None, "scope": None,
         "category": None, "location": None, "unit_hint": None, "brand": None,
         "diameter_mm": None, "thickness_mm": None, "length_mm": None,
         "height_mm": None, "dimensions": None, "sizes_mm": [],
     }
+
+    for canonical, pattern in _ITEM_TYPE_PATTERNS:
+        if pattern.search(t):
+            attrs["item_type"] = canonical
+            break
 
     for m in MATERIALS:
         if m in t:
@@ -204,6 +248,10 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
             if describe_mismatch:
                 differences.append(describe_mismatch(a, b))
 
+    # Item type is the single most price-defining attribute: a planter must
+    # never be priced from litter bins just because material/finish agree.
+    judge("item_type", 5.0, lambda a, b: a == b,
+          lambda a, b: f"different item type ({b} instead of {a})")
     judge("material", 3.0, lambda a, b: a == b or a in b or b in a,
           lambda a, b: f"different material ({b} instead of {a})")
     judge("category", 2.0, lambda a, b: a == b)

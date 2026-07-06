@@ -128,6 +128,41 @@ def test_empty_query_rejected():
         searcher.search("   ")
 
 
+def test_item_type_extraction():
+    assert extract_attributes(normalize_text("Planter Pot FF-30"))["item_type"] == "planter"
+    assert extract_attributes(normalize_text("Out Door Litter Bin"))["item_type"] == "litter bin"
+    assert extract_attributes(normalize_text("SS handrail 50mm dia"))["item_type"] == "handrail"
+    assert extract_attributes(normalize_text("stainless steel plate"))["item_type"] is None
+    # 'sign' must not fire inside words like 'design'.
+    assert extract_attributes(normalize_text("designed bracket"))["item_type"] is None
+
+
+def test_same_item_type_beats_same_material():
+    """A planter query must rank a planter above a litter bin even when the
+    litter bin matches material, finish and thickness better."""
+    df = make_df([
+        # Litter bin: perfect material/finish/thickness agreement.
+        {"description": "Litter bin galvanized steel plate 6mm thick, zinc "
+                        "primer, powder coated finish", "unit": "Nos",
+         "rate": 1700.0},
+        # Planter: same type but different material and finish.
+        {"description": "Planter box mild steel with corten finish",
+         "unit": "Nos", "rate": 9500.0},
+    ])
+    searcher = SimilaritySearcher(clean_dataset(df))
+    out = searcher.search("Planter made of 6mm thick galvanized steel plate "
+                          "with zinc primer and powder coating finish", top_k=2)
+    top = out["matches"][0]
+    assert top["item_type"] == "planter", (
+        f"litter bin outranked the planter: {out['matches']}")
+    assert "litter bin" == out["matches"][1]["item_type"]
+
+    # And the pricing set must contain only planters.
+    from pricing_engine import select_pricing_matches
+    pricing = select_pricing_matches(out["matches"], "planter")
+    assert all(m["item_type"] == "planter" for m in pricing)
+
+
 def test_price_independent_of_top_k(monkeypatch):
     """The predicted price must not change with how many matches are shown."""
     import config

@@ -50,14 +50,22 @@ class SimilaritySearcher:
         pool = min(len(self.df), max(top_k * 8, 40))
         candidates = text_sims.argsort()[::-1][:pool]
 
+        input_type = input_attrs.get("item_type")
         results = []
         for idx in candidates:
             comparison = compare_attributes(input_attrs, self.item_attrs[idx])
             text_score = float(text_sims[idx])
             final = (config.TEXT_WEIGHT * text_score
                      + config.ATTR_WEIGHT * comparison["attribute_score"])
+            # Hard penalty when both sides have a recognized item type and
+            # they differ: a litter bin must never outrank a real planter
+            # for a planter query just because material/finish agree.
+            item_type = self.item_attrs[idx].get("item_type")
+            if input_type and item_type and input_type != item_type:
+                final *= config.TYPE_MISMATCH_PENALTY
             row = self.df.iloc[idx]
             results.append({
+                "item_type": item_type,
                 "description": row["full_description"],
                 "clean_description": row["clean_text"],
                 "unit": row.get("unit") if pd.notna(row.get("unit")) else None,

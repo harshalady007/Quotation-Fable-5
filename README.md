@@ -202,6 +202,13 @@ Source File.
 
 ## How the price is kept stable and reliable
 
+- The **item type** (planter, litter bin, bench, bollard, handrail, ...) is
+  extracted from both the input and every dataset item. A different item
+  type gets its score cut by more than half, so a litter bin can never
+  outrank a real planter for a planter query just because material and
+  finish agree — and the pricing set is restricted to same-type items
+  whenever any exist. If the dataset has no items of the input's type, a
+  warning says the price comes from other item types.
 - The price is **always computed from a fixed pricing set**: the strongest
   matches (within 80% of the best similarity score, 3–5 items) — completely
   independent of how many matches you choose to *display*. Changing "top

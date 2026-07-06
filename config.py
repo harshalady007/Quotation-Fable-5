@@ -33,6 +33,11 @@ ATTR_WEIGHT = 0.45
 # Matches below this final score are considered weak.
 WEAK_MATCH_THRESHOLD = 0.35
 
+# When both the input and a dataset item have a recognized item type
+# (planter, litter bin, bench, ...) and they differ, the item's final score
+# is multiplied by this penalty so same-type items always outrank it.
+TYPE_MISMATCH_PENALTY = 0.45
+
 # Pricing is always computed from a fixed set of the strongest matches,
 # independent of how many matches the user displays (top_k). A match joins
 # the pricing set when its score is within PRICING_RELATIVE_CUTOFF of the
