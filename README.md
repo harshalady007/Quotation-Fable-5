@@ -16,7 +16,10 @@ generic steel plate.
 ## Project structure
 
 ```text
-├── app.py                  # Streamlit web interface
+├── streamlit_app.py        # Streamlit web interface (run locally / Streamlit Cloud)
+├── api/index.py            # FastAPI JSON API (for Vercel / serverless hosting)
+├── api/requirements.txt    # Lean dependencies for the serverless function
+├── vercel.json             # Vercel routing + function config
 ├── config.py               # Paths, API settings, weights (env-overridable)
 ├── data_loader.py          # Excel loading + fuzzy column detection
 ├── cleaner.py              # Row cleaning, text/unit normalization, search_text
@@ -42,7 +45,7 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 set DEEPSEEK_API_KEY=your_api_key_here
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 ### PowerShell
@@ -52,7 +55,7 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 $env:DEEPSEEK_API_KEY="your_api_key_here"
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 ### Linux / macOS
@@ -62,7 +65,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 export DEEPSEEK_API_KEY=your_api_key_here
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 The app opens at http://localhost:8501.
@@ -123,6 +126,44 @@ engine = PricingEngine()  # or PricingEngine("path/to/file.xlsx")
 result = engine.predict_price("stainless steel bollard 220mm dia", top_k=5)
 print(result["predicted_unit_price"], result["currency"], result["confidence"])
 ```
+
+## Deploying
+
+### Streamlit UI → Streamlit Community Cloud (recommended for the web app)
+
+**Vercel cannot host Streamlit** — its Python runtime only runs serverless
+functions exporting an ASGI/WSGI `app`, while Streamlit is a long-running
+websocket server. Deploy the UI to [Streamlit Community Cloud](https://share.streamlit.io)
+(free) instead:
+
+1. Go to https://share.streamlit.io and sign in with GitHub.
+2. Pick this repository and branch; the main file `streamlit_app.py` is
+   detected automatically.
+3. Under **Advanced settings → Secrets**, add
+   `DEEPSEEK_API_KEY = "your_api_key_here"`.
+4. Deploy — the dataset ships inside the repo, so nothing else is needed.
+
+### JSON API → Vercel
+
+The repo includes `api/index.py` (FastAPI, exports `app`) and `vercel.json`,
+which is what Vercel's Python runtime expects. Deploying this repo to Vercel
+serves a JSON API (no UI):
+
+- `GET /health` — dataset row count and API-key status
+- `POST /predict` — body `{"description": "...", "top_k": 5}` returns the
+  full prediction result
+- `GET /docs` — interactive Swagger UI
+
+Set `DEEPSEEK_API_KEY` in the Vercel project settings
+(**Settings → Environment Variables**), then redeploy.
+
+Notes:
+- `api/requirements.txt` keeps the function lean (no streamlit/pytest), but
+  the pandas + scikit-learn + numpy/scipy stack is heavy; if the build hits
+  Vercel's 250 MB unzipped function limit, the API needs a bigger plan or a
+  different host (Render / Railway / Fly.io run it without size issues).
+- The first request after a cold start loads and indexes the Excel file, so
+  it is slower than subsequent ones.
 
 ## Running the tests
 
