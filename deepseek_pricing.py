@@ -7,7 +7,6 @@ never logged or returned in any response.
 import json
 import logging
 import re
-import statistics
 
 import requests
 
@@ -23,12 +22,32 @@ SYSTEM_PROMPT = (
     "section, better finish, higher grade, or installation included; adjust "
     "down for simpler material, smaller size, lower grade, supply-only scope, "
     "or simpler finish. Anchor on the strongest matches, not a blind average. "
+    "Be deterministic: the same input must always produce the same price. "
+    "Start from the given statistical anchor, apply explicit adjustments "
+    "only for attribute differences that are actually stated, and keep the "
+    "final price within the given historical rate range unless there is a "
+    "strong stated reason. "
     "Respond ONLY with a JSON object with exactly these keys: "
     "predicted_unit_price (number), currency (string), unit (string), "
     "confidence (one of High/Medium/Low), reasoning (string), "
     "price_basis (string), adjustments (array of strings), "
     "warnings (array of strings)."
 )
+
+
+def weighted_median_rate(matches) -> float | None:
+    """Similarity-weighted median of the matches' rates (deterministic)."""
+    priced = sorted((m for m in matches if m.get("rate")),
+                    key=lambda m: m["rate"])
+    if not priced:
+        return None
+    total = sum(max(m["similarity_score"], 0.01) for m in priced)
+    cum = 0.0
+    for m in priced:
+        cum += max(m["similarity_score"], 0.01)
+        if cum >= total / 2:
+            return float(m["rate"])
+    return float(priced[-1]["rate"])
 
 
 def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
@@ -58,6 +77,19 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
         ]
         if m["differences"]:
             lines.append("Price-relevant differences: " + "; ".join(m["differences"]))
+    rates = [m["rate"] for m in matches if m.get("rate")]
+    anchor = weighted_median_rate(matches)
+    if rates and anchor is not None:
+        lines += [
+            "",
+            f"STATISTICAL ANCHOR (similarity-weighted median of these matches): "
+            f"{anchor:,.2f} {config.DEFAULT_CURRENCY}",
+            f"HISTORICAL RATE RANGE of these matches: {min(rates):,.2f} to "
+            f"{max(rates):,.2f} {config.DEFAULT_CURRENCY}",
+            "Start from the anchor, adjust only for stated attribute "
+            "differences, and stay within the historical range unless there "
+            "is a strong stated reason.",
+        ]
     if weak_matches:
         lines += ["", "WARNING: All matches are weak. State this in warnings "
                       "and lower your confidence accordingly."]
@@ -108,11 +140,9 @@ def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
             "fallback_used": True,
         }
     rates = [m["rate"] for m in priced]
-    weights = [max(m["similarity_score"], 0.01) for m in priced]
-    weighted_avg = sum(r * w for r, w in zip(rates, weights)) / sum(weights)
-    median = statistics.median(rates)
-    # Blend: median resists outliers, weighted average respects match quality.
-    estimate = round((weighted_avg + median) / 2, 2)
+    # Similarity-weighted median: deterministic and robust to outliers, and
+    # identical no matter how many matches the user chose to display.
+    estimate = round(weighted_median_rate(priced), 2)
     units = [m["unit"] for m in priced if m["unit"]]
     return {
         "predicted_unit_price": estimate,
@@ -120,9 +150,9 @@ def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
         "unit": units[0] if units else "unknown",
         "confidence": "Low" if weak_matches else "Medium",
         "reasoning": (
-            f"Statistical fallback: blend of the similarity-weighted average "
-            f"({weighted_avg:,.2f}) and the median ({median:,.2f}) of the top "
-            f"{len(priced)} historical rates. {reason}"
+            f"Statistical fallback: similarity-weighted median of the "
+            f"{len(priced)} strongest historical rates "
+            f"({min(rates):,.2f} to {max(rates):,.2f}). {reason}"
         ),
         "price_basis": f"Top {len(priced)} historical matches (statistical, no LLM).",
         "adjustments": [],
@@ -150,7 +180,7 @@ def predict_price_with_deepseek(description: str, input_attrs: dict,
             {"role": "user", "content": _build_user_prompt(
                 description, input_attrs, matches, weak_matches)},
         ],
-        "temperature": 0.2,
+        "temperature": 0,
         "response_format": {"type": "json_object"},
     }
     try:
@@ -177,6 +207,22 @@ def predict_price_with_deepseek(description: str, input_attrs: dict,
         return fallback_prediction(matches, weak_matches,
                                    "DeepSeek returned invalid JSON.")
     result["fallback_used"] = False
+
+    # Clamp the LLM's price to the pricing set's historical range so a
+    # drifting response can never produce an implausible number.
+    rates = [m["rate"] for m in matches if m.get("rate")]
+    if rates and result["predicted_unit_price"] is not None:
+        lo = round(min(rates) * config.PRICE_CLAMP_LOW, 2)
+        hi = round(max(rates) * config.PRICE_CLAMP_HIGH, 2)
+        p = result["predicted_unit_price"]
+        if p < lo or p > hi:
+            result["predicted_unit_price"] = min(max(p, lo), hi)
+            result["warnings"].append(
+                f"Model suggested {p:,.2f}, outside the historical evidence "
+                f"range; clamped to {result['predicted_unit_price']:,.2f} "
+                f"(allowed {lo:,.2f} to {hi:,.2f})."
+            )
+
     if weak_matches and "Low" not in result["confidence"]:
         result["warnings"].append("Similarity matches were weak; verify manually.")
     return result

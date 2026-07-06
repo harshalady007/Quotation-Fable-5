@@ -32,3 +32,16 @@ ATTR_WEIGHT = 0.45
 
 # Matches below this final score are considered weak.
 WEAK_MATCH_THRESHOLD = 0.35
+
+# Pricing is always computed from a fixed set of the strongest matches,
+# independent of how many matches the user displays (top_k). A match joins
+# the pricing set when its score is within PRICING_RELATIVE_CUTOFF of the
+# best score; the set has between MIN and MAX members.
+PRICING_MIN_MATCHES = 3
+PRICING_MAX_MATCHES = 5
+PRICING_RELATIVE_CUTOFF = 0.8
+
+# The predicted price is clamped to this factor of the pricing set's
+# historical rate range, so the LLM cannot drift far from the evidence.
+PRICE_CLAMP_LOW = 0.7    # x lowest rate in pricing set
+PRICE_CLAMP_HIGH = 1.3   # x highest rate in pricing set

@@ -107,6 +107,7 @@
       <div id="warnings"></div>
       <h2>Estimator reasoning</h2>
       <div class="reason" id="reasoning"></div>
+      <div id="anchor"></div>
       <div id="basis"></div>
       <div id="adjustments"></div>
       <h2>Extracted input attributes</h2>
@@ -118,7 +119,7 @@
       <div class="tablewrap">
         <table>
           <thead><tr>
-            <th>#</th><th>Similarity</th><th>Description</th><th>Unit</th>
+            <th>#</th><th>Priced&nbsp;on</th><th>Similarity</th><th>Description</th><th>Unit</th>
             <th>Qty</th><th>Rate</th><th>Amount</th><th>Category / scope</th>
             <th>Matched</th><th>Mismatched</th>
           </tr></thead>
@@ -189,6 +190,11 @@ function render(d) {
     .map(w => `<div class="warn-box">⚠️ ${esc(w)}</div>`).join("");
 
   $("reasoning").textContent = d.reasoning || "No reasoning returned.";
+  $("anchor").innerHTML = d.statistical_anchor != null
+    ? `<p><strong>Statistical anchor:</strong> ${fmt(d.statistical_anchor)} ${esc(d.currency)}
+       (similarity-weighted median of the ${ (d.pricing_matches_used || []).length }
+       strongest matches — the price is always computed from these,
+       regardless of how many matches you display)</p>` : "";
   $("basis").innerHTML = d.price_basis
     ? `<p><strong>Price basis:</strong> ${esc(d.price_basis)}</p>` : "";
   $("adjustments").innerHTML = (d.adjustments || []).length
@@ -206,6 +212,7 @@ function render(d) {
   $("matches").innerHTML = (d.matches || []).map(m => `
     <tr>
       <td>${m.rank}</td>
+      <td style="text-align:center">${m.used_for_pricing ? "✓" : "—"}</td>
       <td class="num">${(m.similarity_score ?? 0).toFixed(2)}<br>
         <small>text ${(m.text_similarity ?? 0).toFixed(2)} · attr ${(m.attribute_score ?? 0).toFixed(2)}</small></td>
       <td class="desc">${esc(m.description)}</td>

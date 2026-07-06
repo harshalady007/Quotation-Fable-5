@@ -84,6 +84,14 @@ if st.button("Predict price", type="primary"):
 
     st.subheader("Estimator reasoning")
     st.write(result["reasoning"] or "_No reasoning returned._")
+    if result.get("statistical_anchor") is not None:
+        st.write(
+            f"**Statistical anchor:** {result['statistical_anchor']:,.2f} "
+            f"{result['currency']} (similarity-weighted median of the "
+            f"{len(result.get('pricing_matches_used', []))} strongest matches — "
+            "the price is always computed from these, regardless of how many "
+            "matches are displayed)"
+        )
     if result["price_basis"]:
         st.write(f"**Price basis:** {result['price_basis']}")
     if result["adjustments"]:
@@ -103,6 +111,7 @@ if st.button("Predict price", type="primary"):
     for m in result["matches"]:
         rows.append({
             "Rank": m["rank"],
+            "Priced on": "✓" if m.get("used_for_pricing") else "—",
             "Similarity": f"{m['similarity_score']:.2f}",
             "Text sim": f"{m['text_similarity']:.2f}",
             "Attr score": f"{m['attribute_score']:.2f}",

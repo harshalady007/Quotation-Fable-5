@@ -200,6 +200,22 @@ For the included file it selects the **Products** sheet: Description,
 Item Name, Unit Price→rate, Unit, Scope of Work→category, Remarks,
 Source File.
 
+## How the price is kept stable and reliable
+
+- The price is **always computed from a fixed pricing set**: the strongest
+  matches (within 80% of the best similarity score, 3–5 items) — completely
+  independent of how many matches you choose to *display*. Changing "top
+  matches" changes the table, never the price. The table marks the pricing
+  set with a ✓ in the "Priced on" column.
+- A deterministic **statistical anchor** (similarity-weighted median of the
+  pricing set) is computed and given to DeepSeek, which must start from it
+  and justify any adjustment from stated attribute differences.
+- DeepSeek runs at **temperature 0**, and its answer is **clamped** to
+  0.7×min – 1.3×max of the pricing set's historical rates; a clamped price
+  is flagged with a warning.
+- The no-API-key fallback returns the anchor itself, so it is exactly
+  reproducible.
+
 ## Known limitations and assumptions
 
 - The included dataset is mostly street furniture/landscape items priced

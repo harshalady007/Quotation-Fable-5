@@ -128,6 +128,25 @@ def test_empty_query_rejected():
         searcher.search("   ")
 
 
+def test_price_independent_of_top_k(monkeypatch):
+    """The predicted price must not change with how many matches are shown."""
+    import config
+    monkeypatch.setattr(config, "DEEPSEEK_API_KEY", "")  # deterministic fallback
+    from pricing_engine import select_pricing_matches
+    searcher = SimilaritySearcher(clean_dataset(SAMPLE))
+    from deepseek_pricing import fallback_prediction
+
+    def price_at(top_k):
+        out = searcher.search("stainless steel handrail 50mm dia brushed",
+                              top_k=max(top_k, config.PRICING_MAX_MATCHES))
+        pricing = select_pricing_matches(out["matches"])
+        return fallback_prediction(pricing, out["weak_matches"], "no key")[
+            "predicted_unit_price"]
+
+    prices = {price_at(k) for k in (1, 3, 5, 10)}
+    assert len(prices) == 1, f"price varies with top_k: {prices}"
+
+
 def test_real_dataset_if_available():
     import config
     from data_loader import load_dataset
