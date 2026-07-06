@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quotation Pricing Bot</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #1a2233; --panel2: #202b42; --border: #2c3a57;
+    --text: #e8edf6; --muted: #9aa7bd; --accent: #4f8ef7; --good: #34c98e;
+    --warn: #e0a53f; --bad: #e06060;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6fa; --panel: #ffffff; --panel2: #eef2f8; --border: #d7deea;
+      --text: #1c2434; --muted: #5b6778; --accent: #2f6fe0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; margin-bottom: 16px;
+  }
+  textarea {
+    width: 100%; min-height: 90px; resize: vertical; padding: 10px 12px;
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; font: inherit;
+  }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font: inherit;
+  }
+  button {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 10px 22px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .55; cursor: wait; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .metric { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .metric .label { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  .metric .value { font-size: 1.35rem; font-weight: 700; margin-top: 2px; }
+  .warn-box {
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+    border: 1px solid var(--warn); border-radius: 8px;
+    padding: 10px 12px; margin-top: 12px; font-size: .92rem;
+  }
+  .err-box {
+    background: color-mix(in srgb, var(--bad) 12%, transparent);
+    border: 1px solid var(--bad); border-radius: 8px; padding: 10px 12px; margin-top: 12px;
+  }
+  h2 { font-size: 1.05rem; margin: 20px 0 8px; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { border-bottom: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .desc { max-width: 340px; white-space: pre-line; }
+  .tag { display: inline-block; background: var(--panel2); border: 1px solid var(--border);
+         border-radius: 5px; padding: 1px 7px; margin: 1px 2px 1px 0; font-size: .8rem; }
+  .tag.match { border-color: var(--good); color: var(--good); }
+  .tag.miss { border-color: var(--bad); color: var(--bad); }
+  .reason { white-space: pre-line; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  .hidden { display: none; }
+  .spinner { color: var(--muted); }
+  footer { color: var(--muted); font-size: .8rem; margin-top: 24px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💰 Quotation Pricing Bot</h1>
+  <p class="sub">Describe a new item or service. The bot finds the most similar
+  historical quotation items, compares attributes like an estimator, and
+  predicts a unit price.</p>
+
+  <div class="card">
+    <textarea id="desc" placeholder="e.g. Supply and install 50mm diameter stainless steel handrail with brushed finish"></textarea>
+    <div class="row">
+      <label for="topk">Top matches:</label>
+      <select id="topk">
+        <option>3</option><option selected>5</option><option>8</option>
+        <option>10</option><option>15</option>
+      </select>
+      <button id="go">Predict price</button>
+      <span id="status" class="spinner"></span>
+    </div>
+    <div id="error" class="err-box hidden"></div>
+  </div>
+
+  <div id="result" class="hidden">
+    <div class="card">
+      <div class="metrics">
+        <div class="metric"><div class="label">Predicted unit price</div><div class="value" id="m-price">—</div></div>
+        <div class="metric"><div class="label">Unit</div><div class="value" id="m-unit">—</div></div>
+        <div class="metric"><div class="label">Confidence</div><div class="value" id="m-conf">—</div></div>
+        <div class="metric"><div class="label">Price source</div><div class="value" id="m-src">—</div></div>
+      </div>
+      <div id="warnings"></div>
+      <h2>Estimator reasoning</h2>
+      <div class="reason" id="reasoning"></div>
+      <div id="basis"></div>
+      <div id="adjustments"></div>
+      <h2>Extracted input attributes</h2>
+      <div id="in-attrs"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">Top similar historical items</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>Similarity</th><th>Description</th><th>Unit</th>
+            <th>Qty</th><th>Rate</th><th>Amount</th><th>Category / scope</th>
+            <th>Matched</th><th>Mismatched</th>
+          </tr></thead>
+          <tbody id="matches"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <footer>API docs: <a href="/docs">/docs</a> · Health: <a href="/health">/health</a></footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n == null ? "n/a" :
+  Number(n).toLocaleString(undefined, {maximumFractionDigits: 2});
+
+$("go").addEventListener("click", predict);
+$("desc").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) predict();
+});
+
+async function predict() {
+  const description = $("desc").value.trim();
+  $("error").classList.add("hidden");
+  if (description.length < 3) {
+    return showError("Please enter an item or service description.");
+  }
+  $("go").disabled = true;
+  $("status").textContent = "Searching history and estimating price… (can take ~30s)";
+  try {
+    const resp = await fetch("/predict", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({description, top_k: Number($("topk").value)}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      const detail = typeof data.detail === "string" ? data.detail
+        : (data.detail?.[0]?.msg || "Request failed.");
+      return showError(detail);
+    }
+    render(data);
+  } catch (e) {
+    showError("Could not reach the API: " + e.message);
+  } finally {
+    $("go").disabled = false;
+    $("status").textContent = "";
+  }
+}
+
+function showError(msg) {
+  const el = $("error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+function render(d) {
+  $("m-price").textContent = d.predicted_unit_price == null ? "n/a"
+    : `${fmt(d.predicted_unit_price)} ${esc(d.currency)}`;
+  $("m-unit").textContent = d.unit || "unknown";
+  $("m-conf").textContent = d.confidence || "—";
+  $("m-src").textContent = d.fallback_used ? "Statistical fallback" : "DeepSeek AI";
+
+  $("warnings").innerHTML = (d.warnings || [])
+    .map(w => `<div class="warn-box">⚠️ ${esc(w)}</div>`).join("");
+
+  $("reasoning").textContent = d.reasoning || "No reasoning returned.";
+  $("basis").innerHTML = d.price_basis
+    ? `<p><strong>Price basis:</strong> ${esc(d.price_basis)}</p>` : "";
+  $("adjustments").innerHTML = (d.adjustments || []).length
+    ? "<p><strong>Adjustments considered:</strong></p><ul>" +
+      d.adjustments.map(a => `<li>${esc(a)}</li>`).join("") + "</ul>" : "";
+
+  const attrs = Object.entries(d.input_attributes || {})
+    .filter(([k, v]) => v != null && !(Array.isArray(v) && !v.length) &&
+                        k !== "finishes_all");
+  $("in-attrs").innerHTML = attrs.length
+    ? attrs.map(([k, v]) => `<span class="tag">${esc(k)}: ${esc(
+        Array.isArray(v) ? v.join(", ") : v)}</span>`).join("")
+    : '<span class="tag">no attributes detected</span>';
+
+  $("matches").innerHTML = (d.matches || []).map(m => `
+    <tr>
+      <td>${m.rank}</td>
+      <td class="num">${(m.similarity_score ?? 0).toFixed(2)}<br>
+        <small>text ${(m.text_similarity ?? 0).toFixed(2)} · attr ${(m.attribute_score ?? 0).toFixed(2)}</small></td>
+      <td class="desc">${esc(m.description)}</td>
+      <td>${esc(m.unit || "")}</td>
+      <td class="num">${fmt(m.quantity)}</td>
+      <td class="num"><strong>${fmt(m.rate)}</strong></td>
+      <td class="num">${fmt(m.amount)}</td>
+      <td>${esc(m.category || "")}</td>
+      <td>${(m.matched_attributes || []).map(a => `<span class="tag match">${esc(a)}</span>`).join("") || "—"}</td>
+      <td>${(m.mismatched_attributes || []).map(a => `<span class="tag miss">${esc(a)}</span>`).join("") || "—"}</td>
+    </tr>`).join("");
+
+  $("result").classList.remove("hidden");
+}
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 import config
@@ -52,8 +53,23 @@ class PredictRequest(BaseModel):
     top_k: int = Field(5, ge=1, le=15, description="Number of similar items to use")
 
 
-@app.get("/")
+_UI_PATH = Path(__file__).resolve().parent / "ui.html"
+
+
+@app.get("/", response_class=HTMLResponse)
 def root():
+    """Serve the single-file web UI."""
+    try:
+        return _UI_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return HTMLResponse(
+            "<h1>Quotation Pricing Bot API</h1>"
+            "<p>UI file missing. Use <a href='/docs'>/docs</a> to call the "
+            "API directly.</p>", status_code=200)
+
+
+@app.get("/api")
+def api_info():
     return {
         "service": "Quotation Pricing Bot API",
         "endpoints": {"POST /predict": "predict a unit price",
