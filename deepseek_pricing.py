@@ -11,6 +11,7 @@ import re
 import requests
 
 import config
+from attribute_extractor import INSTALL_SCOPES, SUPPLY_SCOPES
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +45,6 @@ SYSTEM_PROMPT = (
     "price_basis (string), adjustments (array of strings), "
     "warnings (array of strings)."
 )
-
-
-INSTALL_SCOPES = {"supply and install", "install only"}
-SUPPLY_SCOPES = {"supply only", "supply and delivery"}
 
 
 def scope_adjusted_rate(rate, item_scope, input_scope):

@@ -165,6 +165,13 @@ HEIGHT_RE = re.compile(rf"{_NUM}\s*mm\s*h\b|\bh[\s:.]+{_NUM}\s*mm|height[:\s]*{_
 SIZE_TOKEN_RE = re.compile(rf"{_NUM}\s*mm\b")
 
 
+# Scopes whose rates are convertible into each other via the company's
+# 20% installation rule — a comp in one group is still a valid pricing
+# comparable for an input in the other, after rate conversion.
+INSTALL_SCOPES = {"supply and install", "install only"}
+SUPPLY_SCOPES = {"supply only", "supply and delivery"}
+
+
 def detect_scope(text: str) -> str | None:
     """Detect the work scope in normalized text (also usable on the
     dataset's scope-of-work column)."""
@@ -363,7 +370,13 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
     judge("material", 3.0, lambda a, b: a == b or a in b or b in a,
           lambda a, b: f"different material ({b} instead of {a})")
     judge("category", 2.0, lambda a, b: a == b)
-    judge("scope", 2.0, lambda a, b: a == b,
+    # Scopes within the convertible supply/install groups count as matched:
+    # the 20% rule converts their rates, so a supply-only comp is a valid
+    # comparable for an install input (and selecting the same comps for
+    # both scopes is what keeps install = supply + 20% consistent).
+    _convertible = INSTALL_SCOPES | SUPPLY_SCOPES
+    judge("scope", 2.0,
+          lambda a, b: a == b or (a in _convertible and b in _convertible),
           lambda a, b: f"different work scope ({b} instead of {a})")
     judge("finish", 1.5, lambda a, b: a == b or a in (item_attrs.get("finishes_all") or []),
           lambda a, b: f"different finish ({b} instead of {a})")

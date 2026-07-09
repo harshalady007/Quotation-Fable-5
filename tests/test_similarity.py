@@ -201,6 +201,35 @@ def test_scope_adjustment_20_percent():
     assert out["predicted_unit_price"] == 120.0
 
 
+def test_install_price_is_20pct_above_supply_only(monkeypatch):
+    """The same item priced supply-and-install vs supply-only must select
+    the same comps and differ by exactly the 20% rule (fallback path)."""
+    import config
+    monkeypatch.setattr(config, "DEEPSEEK_API_KEY", "")
+    from deepseek_pricing import fallback_prediction, scope_adjusted_rate
+    from pricing_engine import select_pricing_matches
+    searcher = SimilaritySearcher(clean_dataset(SAMPLE))
+
+    def anchor_for(scope):
+        out = searcher.search(
+            f"stainless steel handrail 50mm dia brushed, {scope}",
+            top_k=config.PRICING_MAX_MATCHES)
+        input_scope = out["input_attributes"]["scope"]
+        pricing = select_pricing_matches(out["matches"], "handrail")
+        for m in pricing:
+            m["scope_adjusted_rate"] = scope_adjusted_rate(
+                m.get("rate"), m.get("scope"), input_scope)
+        descs = tuple(m["clean_description"] for m in pricing)
+        price = fallback_prediction(pricing, out["weak_matches"], "t")[
+            "predicted_unit_price"]
+        return descs, price
+
+    descs_install, p_install = anchor_for("supply and install")
+    descs_supply, p_supply = anchor_for("supply only")
+    assert descs_install == descs_supply, "scope changed comp selection"
+    assert abs(p_install - p_supply * 1.2) < 0.01 or p_install == p_supply
+
+
 def test_real_dataset_if_available():
     import config
     from data_loader import load_dataset
