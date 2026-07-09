@@ -23,10 +23,18 @@ SYSTEM_PROMPT = (
     "down for simpler material, smaller size, lower grade, supply-only scope, "
     "or simpler finish. Anchor on the strongest matches, not a blind average. "
     "Be deterministic: the same input must always produce the same price. "
-    "Start from the given statistical anchor, apply explicit adjustments "
-    "only for attribute differences that are actually stated, and keep the "
-    "final price within the given historical rate range unless there is a "
-    "strong stated reason. "
+    "Start from the given statistical anchor and apply explicit, quantified "
+    "adjustments only for attribute differences that are actually stated. "
+    "You may go outside the historical rate range when the differences "
+    "clearly justify it - state the multiplier you applied. "
+    "Typical cost relativities to apply: stainless steel fabrication is "
+    "roughly 2.5-3x mild or galvanized steel; SS316 is ~1.15x SS304; "
+    "installation included adds ~15-35% over supply only; linear items "
+    "scale roughly with length/height and structural complexity; area items "
+    "scale with buildup thickness and finish quality; a much larger overall "
+    "size means proportionally more material. "
+    "Never compare per-metre or per-m2 rates directly with per-item rates: "
+    "if the unit bases differ, say so and lower confidence to Low. "
     "Respond ONLY with a JSON object with exactly these keys: "
     "predicted_unit_price (number), currency (string), unit (string), "
     "confidence (one of High/Medium/Low), reasoning (string), "
@@ -59,6 +67,7 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
         json.dumps({k: v for k, v in input_attrs.items() if v not in (None, [])},
                    ensure_ascii=False),
         "",
+        f"INPUT UNIT BASIS: {input_attrs.get('unit_hint') or 'not stated'}",
         f"HISTORICAL CURRENCY: {config.DEFAULT_CURRENCY}",
         "",
         "TOP SIMILAR HISTORICAL ITEMS:",
@@ -86,9 +95,10 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
             f"{anchor:,.2f} {config.DEFAULT_CURRENCY}",
             f"HISTORICAL RATE RANGE of these matches: {min(rates):,.2f} to "
             f"{max(rates):,.2f} {config.DEFAULT_CURRENCY}",
-            "Start from the anchor, adjust only for stated attribute "
-            "differences, and stay within the historical range unless there "
-            "is a strong stated reason.",
+            "Start from the anchor and apply quantified adjustments for the "
+            "stated attribute differences (material, grade, size, scope, "
+            "finish); going outside the historical range is allowed when "
+            "the differences clearly justify it.",
         ]
     if weak_matches:
         lines += ["", "WARNING: All matches are weak. State this in warnings "

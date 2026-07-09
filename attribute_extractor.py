@@ -6,6 +6,8 @@ All extraction runs on text already normalized by cleaner.normalize_text.
 
 import re
 
+from cleaner import normalize_unit
+
 # What the item fundamentally IS. Checked in order; first hit wins, so more
 # specific phrases come before generic ones. Matching a wrong item type is
 # penalized harder than any other attribute.
@@ -20,6 +22,9 @@ ITEM_TYPES = [
                    "bike stand", "bicycle rack"]),
     ("shade structure", ["shade structure", "pergola", "gazebo", "shade sail",
                          "canopy"]),
+    ("trellis", ["trellis"]),
+    ("hatch", ["manhole hatch", "man hole hatch", "access hatch", "hatch",
+               "manhole cover", "access cover", "manhole", "man hole"]),
     ("handrail", ["handrail", "hand rail"]),
     ("balustrade", ["balustrade", "guardrail", "railing"]),
     ("fence", ["fence", "fencing"]),
@@ -37,7 +42,20 @@ ITEM_TYPES = [
     ("bowl", ["concrete bowl", "bowl"]),
     ("ladder", ["ladder"]),
     ("grating", ["grating", "grille"]),
+    ("decking", ["decking", "deck"]),
 ]
+
+# Item types that are close enough cousins to price from each other when no
+# exact-type match exists (no hard score penalty between them).
+COMPATIBLE_TYPES = [
+    {"handrail", "balustrade"},
+]
+
+
+def types_compatible(a, b) -> bool:
+    if not a or not b or a == b:
+        return False
+    return any(a in group and b in group for group in COMPATIBLE_TYPES)
 
 _ITEM_TYPE_PATTERNS = [
     (canonical, re.compile(r"\b" + re.escape(syn) + r"\b"))
@@ -46,6 +64,7 @@ _ITEM_TYPE_PATTERNS = [
 
 MATERIALS = [
     "stainless steel", "mild steel", "carbon steel", "galvanized", "aluminium",
+    "composite bamboo", "bamboo", "corten",
     "concrete", "uhpc", "precast", "timber", "wood", "hardwood", "glass",
     "gypsum", "pvc", "hdpe", "upvc", "copper", "brass", "bronze", "cast iron",
     "iron", "granite", "marble", "ceramic", "porcelain", "rubber", "epdm",
@@ -103,10 +122,13 @@ LOCATIONS = [
     "playground", "beach", "corniche",
 ]
 
-UNIT_WORDS = re.compile(
-    r"\b(per\s+)?(no|nos|each|item|set|pair|lm|rm|rmt|m2|sqm|m3|cum|kg|ton|"
-    r"day|hour|hr|ls|lump sum|running metre|linear metre|metre|meter)\b"
-)
+_UNIT_TOKENS = (r"no|nos|each|item|set|pair|lm|rm|rmt|m2|sqm|m3|cum|kg|ton|"
+                r"day|hour|hr|ls|lump sum|running metre|linear metre|"
+                r"metre|meter|m")
+# An explicit "per <unit>" states the pricing basis and always wins over a
+# bare unit word that may just be counting parts ("11 no.s of cables").
+PER_UNIT_RE = re.compile(rf"\bper\s+({_UNIT_TOKENS})\b")
+UNIT_WORDS = re.compile(rf"\b({_UNIT_TOKENS})\b")
 
 _NUM = r"(\d+(?:\.\d+)?)"
 DIA_RE = re.compile(rf"(?:{_NUM}\s*mm\s*dia|dia\.?\s*{_NUM}\s*mm|dia\.?\s*{_NUM}|"
@@ -179,9 +201,9 @@ def extract_attributes(text: str) -> dict:
             attrs["location"] = "facade" if loc == "façade" else loc
             break
 
-    u = UNIT_WORDS.search(t)
+    u = PER_UNIT_RE.search(t) or UNIT_WORDS.search(t)
     if u:
-        attrs["unit_hint"] = u.group(2)
+        attrs["unit_hint"] = normalize_unit(u.group(1))
 
     b = re.search(r"brand\s*(?:&\s*origin)?\s*[\":]*\s*\"?([a-z0-9 \-]{2,30})\"?", t)
     if b:
@@ -211,6 +233,9 @@ def extract_attributes(text: str) -> dict:
         attrs["dimensions"] = dims.group(0).strip()
 
     attrs["sizes_mm"] = sorted({float(x) for x in SIZE_TOKEN_RE.findall(t)})
+    # Characteristic overall size: the largest stated dimension. Lets the
+    # comparison flag "same item type but a much bigger/smaller one".
+    attrs["max_size_mm"] = attrs["sizes_mm"][-1] if attrs["sizes_mm"] else None
     return attrs
 
 
@@ -250,8 +275,23 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
 
     # Item type is the single most price-defining attribute: a planter must
     # never be priced from litter bins just because material/finish agree.
-    judge("item_type", 5.0, lambda a, b: a == b,
-          lambda a, b: f"different item type ({b} instead of {a})")
+    # Compatible cousins (handrail/balustrade, trellis/shade structure) get
+    # partial credit instead of a mismatch.
+    a, b = input_attrs.get("item_type"), item_attrs.get("item_type")
+    if a is not None:
+        weight_total += 5.0
+        if b is None:
+            missing.append("item_type")
+            score += 5.0 * 0.35
+        elif a == b:
+            matched.append(f"item_type: {b}")
+            score += 5.0
+        elif types_compatible(a, b):
+            matched.append(f"item_type: {b} (related to {a})")
+            score += 5.0 * 0.6
+        else:
+            mismatched.append(f"item_type: input={a} vs item={b}")
+            differences.append(f"different item type ({b} instead of {a})")
     judge("material", 3.0, lambda a, b: a == b or a in b or b in a,
           lambda a, b: f"different material ({b} instead of {a})")
     judge("category", 2.0, lambda a, b: a == b)
@@ -269,6 +309,9 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
     judge("height_mm", 0.75, _close)
     judge("unit_hint", 1.0, lambda a, b: a == b,
           lambda a, b: f"different unit basis ({b} instead of {a})")
+    judge("max_size_mm", 1.0, lambda a, b: _close(a, b, 0.35),
+          lambda a, b: f"very different overall size ({b:g}mm vs {a:g}mm "
+                       "largest dimension)")
     judge("location", 0.5, lambda a, b: a == b)
 
     attr_score = (score / weight_total) if weight_total > 0 else 0.5

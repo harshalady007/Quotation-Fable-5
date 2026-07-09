@@ -47,6 +47,8 @@ PRICING_MAX_MATCHES = 5
 PRICING_RELATIVE_CUTOFF = 0.8
 
 # The predicted price is clamped to this factor of the pricing set's
-# historical rate range, so the LLM cannot drift far from the evidence.
-PRICE_CLAMP_LOW = 0.7    # x lowest rate in pricing set
-PRICE_CLAMP_HIGH = 1.3   # x highest rate in pricing set
+# historical rate range. Wide enough to allow justified spec adjustments
+# (e.g. SS316 vs mild steel comps can legitimately be ~3x), while still
+# catching order-of-magnitude drift.
+PRICE_CLAMP_LOW = 0.4    # x lowest rate in pricing set
+PRICE_CLAMP_HIGH = 3.0   # x highest rate in pricing set

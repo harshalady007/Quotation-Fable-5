@@ -5,7 +5,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 import config
-from attribute_extractor import compare_attributes, extract_attributes
+from attribute_extractor import (compare_attributes, extract_attributes,
+                                 types_compatible)
 from cleaner import normalize_text, normalize_unit
 
 
@@ -26,7 +27,15 @@ class SimilaritySearcher:
                                           sublinear_tf=True)
         self.matrix = self.vectorizer.fit_transform(self.df["search_text"])
         # Pre-extract attributes for every dataset row (one-time cost).
-        self.item_attrs = [extract_attributes(t) for t in self.df["clean_text"]]
+        # The row's actual unit column is authoritative over any unit word
+        # found inside the description text.
+        self.item_attrs = []
+        for i, text in enumerate(self.df["clean_text"]):
+            attrs = extract_attributes(text)
+            unit_norm = self.df.iloc[i].get("unit_norm")
+            if unit_norm:
+                attrs["unit_hint"] = unit_norm
+            self.item_attrs.append(attrs)
 
     def search(self, query: str, top_k: int = 5) -> dict:
         """Return top_k matches with combined text+attribute scoring."""
@@ -61,7 +70,8 @@ class SimilaritySearcher:
             # they differ: a litter bin must never outrank a real planter
             # for a planter query just because material/finish agree.
             item_type = self.item_attrs[idx].get("item_type")
-            if input_type and item_type and input_type != item_type:
+            if (input_type and item_type and input_type != item_type
+                    and not types_compatible(input_type, item_type)):
                 final *= config.TYPE_MISMATCH_PENALTY
             row = self.df.iloc[idx]
             results.append({

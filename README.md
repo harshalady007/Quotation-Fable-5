@@ -210,16 +210,22 @@ Source File.
   whenever any exist. If the dataset has no items of the input's type, a
   warning says the price comes from other item types.
 - The price is **always computed from a fixed pricing set**: the strongest
-  matches (within 80% of the best similarity score, 3–5 items) — completely
+  matches (within 80% of the best similarity score, up to 5 items) — completely
   independent of how many matches you choose to *display*. Changing "top
   matches" changes the table, never the price. The table marks the pricing
-  set with a ✓ in the "Priced on" column.
+  set with a ✓ in the "Priced on" column. One strong comparable is preferred
+  over several weak ones.
+- The pricing set is **unit-aware**: a per-m² or per-metre input is never
+  priced from per-item rates while same-unit rates exist, and a loud warning
+  appears when the dataset has no rates in the input's unit at all.
 - A deterministic **statistical anchor** (similarity-weighted median of the
   pricing set) is computed and given to DeepSeek, which must start from it
   and justify any adjustment from stated attribute differences.
-- DeepSeek runs at **temperature 0**, and its answer is **clamped** to
-  0.7×min – 1.3×max of the pricing set's historical rates; a clamped price
-  is flagged with a warning.
+- DeepSeek runs at **temperature 0** with quantified estimator guidance
+  (stainless ≈ 2.5–3× mild steel, installation +15–35%, size scaling), and
+  its answer is **clamped** to 0.4×min – 3×max of the pricing set's
+  historical rates — wide enough for justified spec adjustments, tight
+  enough to catch order-of-magnitude drift; a clamped price is flagged.
 - The no-API-key fallback returns the anchor itself, so it is exactly
   reproducible.
 

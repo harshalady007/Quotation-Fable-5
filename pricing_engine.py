@@ -12,27 +12,44 @@ from similarity_search import SimilaritySearcher
 logger = logging.getLogger(__name__)
 
 
-def select_pricing_matches(matches: list, input_type: str | None = None) -> list:
+def select_pricing_matches(matches: list, input_type: str | None = None,
+                           input_unit: str | None = None) -> list:
     """Pick the fixed set of matches the price is computed from.
 
     Independent of how many matches the user displays: takes matches whose
     score is within PRICING_RELATIVE_CUTOFF of the best score, capped at
-    PRICING_MAX_MATCHES, with at least PRICING_MIN_MATCHES. When the input's
-    item type is recognized and same-type matches exist, only those are
-    eligible — a planter is priced from planters, never from litter bins.
+    PRICING_MAX_MATCHES, with at least PRICING_MIN_MATCHES. Eligibility is
+    narrowed in order of importance:
+      1. same item type (or a compatible cousin type) when any exist —
+         a planter is priced from planters, never from litter bins;
+      2. same unit basis when any exist — a per-m2 input is never priced
+         from per-item rates while per-m2 rates are available.
     """
+    from attribute_extractor import types_compatible
+
     if not matches:
         return []
+    pool = matches
     if input_type:
-        same_type = [m for m in matches if m.get("item_type") == input_type]
+        same_type = [m for m in pool if m.get("item_type") == input_type]
+        if not same_type:
+            same_type = [m for m in pool
+                         if types_compatible(input_type, m.get("item_type"))]
         if same_type:
-            matches = same_type
-    best = matches[0]["similarity_score"]
+            pool = same_type
+    if input_unit:
+        same_unit = [m for m in pool
+                     if (m.get("unit_norm") or "") == input_unit]
+        if same_unit:
+            pool = same_unit
+    best = pool[0]["similarity_score"]
     cutoff = best * config.PRICING_RELATIVE_CUTOFF
-    selected = [m for m in matches
+    selected = [m for m in pool
                 if m["similarity_score"] >= cutoff][:config.PRICING_MAX_MATCHES]
-    if len(selected) < config.PRICING_MIN_MATCHES:
-        selected = matches[:config.PRICING_MIN_MATCHES]
+    # One strong comparable beats several weak ones: only fall back to the
+    # raw top of the pool when the cutoff selected nothing at all.
+    if not selected:
+        selected = pool[:config.PRICING_MIN_MATCHES]
     return selected
 
 
@@ -59,13 +76,24 @@ class PricingEngine:
         search = self.searcher.search(input_description, top_k=pool_size)
         pool = search["matches"]
         input_type = search["input_attributes"].get("item_type")
-        pricing_matches = select_pricing_matches(pool, input_type)
+        input_unit = search["input_attributes"].get("unit_hint")
+        pricing_matches = select_pricing_matches(pool, input_type, input_unit)
         pricing_ranks = {m["rank"] for m in pricing_matches}
         matches = pool[:max(int(top_k), 1)]
         for m in matches:
             m["used_for_pricing"] = m["rank"] in pricing_ranks
 
         warnings = []
+        if input_unit and not any((m.get("unit_norm") or "") == input_unit
+                                  for m in pricing_matches):
+            units_found = sorted({m.get("unit_norm") or "unknown"
+                                  for m in pricing_matches})
+            warnings.append(
+                f"The input is priced per '{input_unit}' but no historical "
+                f"match uses that unit (matches are per {', '.join(units_found)}). "
+                "Rates are NOT directly comparable — treat this estimate as "
+                "indicative only."
+            )
         if input_type and not any(m.get("item_type") == input_type
                                   for m in pricing_matches):
             warnings.append(
@@ -73,6 +101,16 @@ class PricingEngine:
                 "the dataset; the price is based on the closest other items "
                 "and should be treated with extra caution."
             )
+        input_size = search["input_attributes"].get("max_size_mm")
+        if input_size and pricing_matches:
+            comp_sizes = [m for m in pricing_matches
+                          if any("overall size" in d for d in m["differences"])]
+            if len(comp_sizes) == len(pricing_matches):
+                warnings.append(
+                    "All historical matches are a very different overall size "
+                    "from the input item; the rate has been adjusted for size "
+                    "but should be verified."
+                )
         if search["input_attributes"].get("scope_assumed"):
             warnings.append(
                 "No work scope stated in the input; assumed 'supply and "

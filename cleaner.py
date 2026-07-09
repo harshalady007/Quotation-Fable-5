@@ -16,6 +16,7 @@ UNIT_MAP = {
     "set": "set", "sets": "set", "pair": "set",
     "m": "m", "mtr": "m", "meter": "m", "metre": "m",
     "lm": "m", "rm": "m", "rmt": "m", "lin.m": "m",
+    "running metre": "m", "linear metre": "m", "running meter": "m",
     "m2": "m2", "sqm": "m2", "sq.m": "m2", "sq m": "m2", "m²": "m2",
     "m3": "m3", "cum": "m3", "cu.m": "m3", "m³": "m3",
     "kg": "kg", "kgs": "kg", "ton": "ton", "tonne": "ton", "mt": "ton",
