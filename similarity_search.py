@@ -5,8 +5,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 import config
-from attribute_extractor import (compare_attributes, extract_attributes,
-                                 types_compatible)
+from attribute_extractor import (compare_attributes, detect_scope,
+                                 extract_attributes, types_compatible)
 from cleaner import normalize_text, normalize_unit
 
 
@@ -35,6 +35,11 @@ class SimilaritySearcher:
             unit_norm = self.df.iloc[i].get("unit_norm")
             if unit_norm:
                 attrs["unit_hint"] = unit_norm
+            # The scope of work usually lives in its own column (mapped to
+            # category), not in the item description.
+            if not attrs.get("scope"):
+                attrs["scope"] = detect_scope(
+                    normalize_text(self.df.iloc[i].get("category")))
             self.item_attrs.append(attrs)
 
     def search(self, query: str, top_k: int = 5) -> dict:
@@ -97,6 +102,7 @@ class SimilaritySearcher:
             row = self.df.iloc[idx]
             results.append({
                 "item_type": item_type,
+                "scope": self.item_attrs[idx].get("scope"),
                 "description": row["full_description"],
                 "clean_description": row["clean_text"],
                 "unit": row.get("unit") if pd.notna(row.get("unit")) else None,

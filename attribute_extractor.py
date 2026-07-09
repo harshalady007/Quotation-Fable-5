@@ -165,6 +165,17 @@ HEIGHT_RE = re.compile(rf"{_NUM}\s*mm\s*h\b|\bh[\s:.]+{_NUM}\s*mm|height[:\s]*{_
 SIZE_TOKEN_RE = re.compile(rf"{_NUM}\s*mm\b")
 
 
+def detect_scope(text: str) -> str | None:
+    """Detect the work scope in normalized text (also usable on the
+    dataset's scope-of-work column)."""
+    if not text:
+        return None
+    for scope, keys in SCOPES:
+        if any(k in text for k in keys):
+            return scope
+    return None
+
+
 def _first_number(match) -> float | None:
     for g in match.groups():
         if g is not None:
@@ -214,10 +225,7 @@ def extract_attributes(text: str) -> dict:
     g = GRADES.search(t)
     attrs["grade"] = g.group(1).replace(" ", "") if g else None
 
-    for scope, keys in SCOPES:
-        if any(k in t for k in keys):
-            attrs["scope"] = scope
-            break
+    attrs["scope"] = detect_scope(t)
 
     for cat, keys in CATEGORIES:
         if any(k in t for k in keys):

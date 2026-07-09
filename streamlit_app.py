@@ -119,6 +119,7 @@ if st.button("Predict price", type="primary"):
             "Unit": m["unit"] or "",
             "Quantity": m["quantity"] or "",
             "Rate": m["rate"],
+            "Rate (scope-adj)": m.get("scope_adjusted_rate") or m["rate"],
             "Amount": m["amount"] or "",
             "Category / scope": m["category"] or "",
             "Matched attributes": "; ".join(m["matched_attributes"]) or "—",

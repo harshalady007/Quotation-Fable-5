@@ -182,6 +182,25 @@ def test_price_independent_of_top_k(monkeypatch):
     assert len(prices) == 1, f"price varies with top_k: {prices}"
 
 
+def test_scope_adjustment_20_percent():
+    """Company rule: supply and install = supply only (or supply and
+    delivery) + 20%, applied to comp rates before pricing."""
+    from deepseek_pricing import fallback_prediction, scope_adjusted_rate
+
+    assert scope_adjusted_rate(100.0, "supply only", "supply and install") == 120.0
+    assert scope_adjusted_rate(100.0, "supply and delivery", "supply and install") == 120.0
+    assert scope_adjusted_rate(120.0, "supply and install", "supply only") == 100.0
+    # Same scope group or unknown scope: unchanged.
+    assert scope_adjusted_rate(100.0, "supply and install", "supply and install") == 100.0
+    assert scope_adjusted_rate(100.0, None, "supply and install") == 100.0
+
+    # The fallback anchor uses the adjusted rate.
+    match = {"rate": 100.0, "scope_adjusted_rate": 120.0,
+             "similarity_score": 0.9, "unit": "no"}
+    out = fallback_prediction([match], weak_matches=False, reason="test")
+    assert out["predicted_unit_price"] == 120.0
+
+
 def test_real_dataset_if_available():
     import config
     from data_loader import load_dataset

@@ -6,7 +6,8 @@ from functools import lru_cache
 import config
 from cleaner import clean_dataset
 from data_loader import load_dataset
-from deepseek_pricing import predict_price_with_deepseek, weighted_median_rate
+from deepseek_pricing import (predict_price_with_deepseek,
+                              scope_adjusted_rate, weighted_median_rate)
 from similarity_search import SimilaritySearcher
 
 logger = logging.getLogger(__name__)
@@ -80,8 +81,11 @@ class PricingEngine:
         pricing_matches = select_pricing_matches(pool, input_type, input_unit)
         pricing_ranks = {m["rank"] for m in pricing_matches}
         matches = pool[:max(int(top_k), 1)]
-        for m in matches:
+        input_scope = search["input_attributes"].get("scope")
+        for m in pool:
             m["used_for_pricing"] = m["rank"] in pricing_ranks
+            m["scope_adjusted_rate"] = scope_adjusted_rate(
+                m.get("rate"), m.get("scope"), input_scope)
 
         warnings = []
         if input_unit and not any((m.get("unit_norm") or "") == input_unit

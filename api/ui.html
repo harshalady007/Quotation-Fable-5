@@ -218,7 +218,9 @@ function render(d) {
       <td class="desc">${esc(m.description)}</td>
       <td>${esc(m.unit || "")}</td>
       <td class="num">${fmt(m.quantity)}</td>
-      <td class="num"><strong>${fmt(m.rate)}</strong></td>
+      <td class="num"><strong>${fmt(m.rate)}</strong>${
+        m.scope_adjusted_rate && m.scope_adjusted_rate !== m.rate
+          ? `<br><small>≈${fmt(m.scope_adjusted_rate)} scope-adj</small>` : ""}</td>
       <td class="num">${fmt(m.amount)}</td>
       <td>${esc(m.category || "")}</td>
       <td>${(m.matched_attributes || []).map(a => `<span class="tag match">${esc(a)}</span>`).join("") || "—"}</td>

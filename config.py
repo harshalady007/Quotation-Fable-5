@@ -50,6 +50,11 @@ SIZE_MISMATCH_PENALTY = 0.6
 # vice versa) is priced for a different product; its score is penalized.
 SEATING_MISMATCH_PENALTY = 0.7
 
+# Company rule: supply and installation is 20% more expensive than supply
+# only / supply and delivery. Historical rates are converted to the input's
+# scope basis before the anchor and clamp are computed.
+SCOPE_INSTALL_UPLIFT = float(os.environ.get("SCOPE_INSTALL_UPLIFT", "1.20"))
+
 # Pricing is always computed from a fixed set of the strongest matches,
 # independent of how many matches the user displays (top_k). A match joins
 # the pricing set when its score is within PRICING_RELATIVE_CUTOFF of the

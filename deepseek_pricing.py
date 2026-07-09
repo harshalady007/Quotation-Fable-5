@@ -29,7 +29,10 @@ SYSTEM_PROMPT = (
     "clearly justify it - state the multiplier you applied. "
     "Typical cost relativities to apply: stainless steel fabrication is "
     "roughly 2.5-3x mild or galvanized steel; SS316 is ~1.15x SS304; "
-    "installation included adds ~15-35% over supply only; linear items "
+    "COMPANY RULE: supply and installation is exactly 20% more expensive "
+    "than supply only or supply and delivery - scope-adjusted rates given "
+    "to you already include this conversion, so do NOT apply it again; "
+    "linear items "
     "scale roughly with length/height and structural complexity; area items "
     "scale with buildup thickness and finish quality; a much larger overall "
     "size means proportionally more material. "
@@ -43,10 +46,34 @@ SYSTEM_PROMPT = (
 )
 
 
+INSTALL_SCOPES = {"supply and install", "install only"}
+SUPPLY_SCOPES = {"supply only", "supply and delivery"}
+
+
+def scope_adjusted_rate(rate, item_scope, input_scope):
+    """Convert a historical rate to the input's scope basis.
+
+    Company rule: supply and installation is SCOPE_INSTALL_UPLIFT (20%)
+    more expensive than supply only / supply and delivery.
+    """
+    if not rate or not input_scope or not item_scope:
+        return rate
+    if input_scope in INSTALL_SCOPES and item_scope in SUPPLY_SCOPES:
+        return round(rate * config.SCOPE_INSTALL_UPLIFT, 2)
+    if input_scope in SUPPLY_SCOPES and item_scope in INSTALL_SCOPES:
+        return round(rate / config.SCOPE_INSTALL_UPLIFT, 2)
+    return rate
+
+
+def _effective_rate(m):
+    return m.get("scope_adjusted_rate") or m.get("rate")
+
+
 def weighted_median_rate(matches) -> float | None:
-    """Similarity-weighted median of the matches' rates (deterministic)."""
-    priced = sorted((m for m in matches if m.get("rate")),
-                    key=lambda m: m["rate"])
+    """Similarity-weighted median of the matches' scope-adjusted rates
+    (deterministic)."""
+    priced = sorted((m for m in matches if _effective_rate(m)),
+                    key=_effective_rate)
     if not priced:
         return None
     total = sum(max(m["similarity_score"], 0.01) for m in priced)
@@ -54,8 +81,8 @@ def weighted_median_rate(matches) -> float | None:
     for m in priced:
         cum += max(m["similarity_score"], 0.01)
         if cum >= total / 2:
-            return float(m["rate"])
-    return float(priced[-1]["rate"])
+            return float(_effective_rate(m))
+    return float(_effective_rate(priced[-1]))
 
 
 def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
@@ -73,12 +100,17 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
         "TOP SIMILAR HISTORICAL ITEMS:",
     ]
     for m in matches:
+        adj = m.get("scope_adjusted_rate")
+        rate_line = (f"Rate: {m['rate']} (scope-adjusted to {adj} on the "
+                     f"input's scope basis per the 20% installation rule)"
+                     if adj and adj != m["rate"] else f"Rate: {m['rate']}")
         lines += [
             f"--- Match {m['rank']} (similarity {m['similarity_score']:.2f}, "
             f"text {m['text_similarity']:.2f}, attributes {m['attribute_score']:.2f}) ---",
             f"Description: {m['description']}",
             f"Unit: {m['unit'] or 'unknown'} | Quantity: {m['quantity'] or 'n/a'} | "
-            f"Rate: {m['rate']} | Amount: {m['amount'] or 'n/a'}",
+            f"{rate_line} | Amount: {m['amount'] or 'n/a'}",
+            f"Scope of work: {m.get('scope') or 'unknown'}",
             f"Category/Scope: {m['category'] or 'unknown'}",
             f"Matched attributes: {', '.join(m['matched_attributes']) or 'none'}",
             f"Mismatched attributes: {', '.join(m['mismatched_attributes']) or 'none'}",
@@ -86,13 +118,13 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
         ]
         if m["differences"]:
             lines.append("Price-relevant differences: " + "; ".join(m["differences"]))
-    rates = [m["rate"] for m in matches if m.get("rate")]
+    rates = [_effective_rate(m) for m in matches if _effective_rate(m)]
     anchor = weighted_median_rate(matches)
     if rates and anchor is not None:
         lines += [
             "",
-            f"CLOSEST MATCH RATE (highest similarity, Match 1): "
-            f"{matches[0]['rate']:,.2f} {config.DEFAULT_CURRENCY} - anchor "
+            f"CLOSEST MATCH RATE (highest similarity, Match 1, scope-adjusted): "
+            f"{_effective_rate(matches[0]):,.2f} {config.DEFAULT_CURRENCY} - anchor "
             "primarily on this item; use the others as corroboration.",
             f"STATISTICAL ANCHOR (similarity-weighted median of these matches): "
             f"{anchor:,.2f} {config.DEFAULT_CURRENCY}",
@@ -139,7 +171,7 @@ def _parse_json_response(content: str) -> dict:
 
 def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
     """Similarity-weighted median-style estimate when DeepSeek is unavailable."""
-    priced = [m for m in matches if m.get("rate")]
+    priced = [m for m in matches if _effective_rate(m)]
     if not priced:
         return {
             "predicted_unit_price": None,
@@ -152,7 +184,7 @@ def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
             "warnings": [reason, "No priced matches available."],
             "fallback_used": True,
         }
-    rates = [m["rate"] for m in priced]
+    rates = [_effective_rate(m) for m in priced]
     # Similarity-weighted median: deterministic and robust to outliers, and
     # identical no matter how many matches the user chose to display.
     estimate = round(weighted_median_rate(priced), 2)
@@ -164,8 +196,9 @@ def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
         "confidence": "Low" if weak_matches else "Medium",
         "reasoning": (
             f"Statistical fallback: similarity-weighted median of the "
-            f"{len(priced)} strongest historical rates "
-            f"({min(rates):,.2f} to {max(rates):,.2f}). {reason}"
+            f"{len(priced)} strongest historical rates, scope-adjusted to "
+            f"the input's work scope ({min(rates):,.2f} to {max(rates):,.2f}). "
+            f"{reason}"
         ),
         "price_basis": f"Top {len(priced)} historical matches (statistical, no LLM).",
         "adjustments": [],
@@ -223,7 +256,7 @@ def predict_price_with_deepseek(description: str, input_attrs: dict,
 
     # Clamp the LLM's price to the pricing set's historical range so a
     # drifting response can never produce an implausible number.
-    rates = [m["rate"] for m in matches if m.get("rate")]
+    rates = [_effective_rate(m) for m in matches if _effective_rate(m)]
     if rates and result["predicted_unit_price"] is not None:
         lo = round(min(rates) * config.PRICE_CLAMP_LOW, 2)
         hi = round(max(rates) * config.PRICE_CLAMP_HIGH, 2)
