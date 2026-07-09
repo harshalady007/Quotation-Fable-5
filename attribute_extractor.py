@@ -132,12 +132,15 @@ UNIT_WORDS = re.compile(rf"\b({_UNIT_TOKENS})\b")
 
 _NUM = r"(\d+(?:\.\d+)?)"
 DIA_RE = re.compile(rf"(?:{_NUM}\s*mm\s*dia|dia\.?\s*{_NUM}\s*mm|dia\.?\s*{_NUM}|"
-                    rf"d\s?{_NUM}(?=\s?\*|\s?mm)|{_NUM}mm\s+dia)")
+                    rf"\bd\s?{_NUM}(?=\s?[\*x]|\s?mm)|{_NUM}mm\s+dia)")
 THICK_RE = re.compile(rf"{_NUM}\s*mm\s*thick|thick(?:ness)?[:\s]*{_NUM}\s*mm|"
                       rf"\*\s*{_NUM}\s*mm(?:\s|$)")
+# Dimension chains: "1200x600mm", "l 17770 x w 3050 x h 800mm",
+# "d3063 x h800mm" — any of l/w/h/d may prefix each number.
+_DIM_PREFIX = r"(?:\b[lwhd][\s:.]*)?"
 DIMS_RE = re.compile(
-    rf"(?:l\s*)?{_NUM}\s*(?:mm)?\s*[x\*]\s*(?:w\s*)?{_NUM}\s*(?:mm)?"
-    rf"(?:\s*[x\*]\s*(?:h\s*)?{_NUM}\s*(?:mm)?)?"
+    rf"{_DIM_PREFIX}{_NUM}\s*(?:mm)?\s*[x\*]\s*{_DIM_PREFIX}{_NUM}\s*(?:mm)?"
+    rf"(?:\s*[x\*]\s*{_DIM_PREFIX}{_NUM}\s*(?:mm)?)?"
 )
 LEN_RE = re.compile(rf"\b(?:l|length)[\s:.]+{_NUM}\s*(mm|m)\b|{_NUM}\s*(m|mm)\s+(?:long|length)")
 HEIGHT_RE = re.compile(rf"{_NUM}\s*mm\s*h\b|\bh[\s:.]+{_NUM}\s*mm|height[:\s]*{_NUM}")
@@ -232,7 +235,18 @@ def extract_attributes(text: str) -> dict:
     if dims:
         attrs["dimensions"] = dims.group(0).strip()
 
-    attrs["sizes_mm"] = sorted({float(x) for x in SIZE_TOKEN_RE.findall(t)})
+    sizes = {float(x) for x in SIZE_TOKEN_RE.findall(t)}
+    # Numbers inside a dimension chain ("l 17770 x w 3050 x h 800mm") share
+    # the trailing unit — without this, only the last "800mm" is seen and a
+    # 17.7m item looks smaller than a 2.6m one.
+    if dims:
+        for g in dims.groups():
+            if g is not None:
+                try:
+                    sizes.add(float(g))
+                except ValueError:
+                    pass
+    attrs["sizes_mm"] = sorted(sizes)
     # Characteristic overall size: the largest stated dimension. Lets the
     # comparison flag "same item type but a much bigger/smaller one".
     attrs["max_size_mm"] = attrs["sizes_mm"][-1] if attrs["sizes_mm"] else None
