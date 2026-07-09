@@ -57,6 +57,23 @@ def types_compatible(a, b) -> bool:
         return False
     return any(a in group and b in group for group in COMPATIBLE_TYPES)
 
+
+# Add-on features that transform an item's price (a planter WITH integrated
+# seating is a different product from a plain planter box).
+ADDON_FEATURES = [
+    ("integrated seating", ["seater", "seating", "seat", "bench"]),
+    ("lighting", ["led", "lighting", "illuminated", "light fitting",
+                  "spotlight", "floodlight", "solar light"]),
+    ("irrigation", ["irrigation", "drain fitting", "drainage"]),
+    ("water feature", ["water feature", "fountain"]),
+    ("cladding", ["cladded", "cladding"]),
+]
+
+_FEATURE_PATTERNS = [
+    (name, re.compile(r"\b" + re.escape(syn) + r"\b"))
+    for name, syns in ADDON_FEATURES for syn in syns
+]
+
 _ITEM_TYPE_PATTERNS = [
     (canonical, re.compile(r"\b" + re.escape(syn) + r"\b"))
     for canonical, syns in ITEM_TYPES for syn in syns
@@ -95,7 +112,8 @@ SCOPES = [
 
 CATEGORIES = [
     ("metalwork", ["handrail", "balustrade", "railing", "bollard", "gate",
-                   "steel structure", "metal", "bike rack", "grating", "ladder"]),
+                   "steel structure", "metalwork", "bike rack", "grating",
+                   "ladder"]),
     ("street furniture", ["bench", "litter bin", "planter", "picnic", "table",
                           "shade structure", "pergola", "gazebo", "seat",
                           "drinking fountain", "cycle stand", "signage", "sign"]),
@@ -176,11 +194,18 @@ def extract_attributes(text: str) -> dict:
             attrs["item_type"] = canonical
             break
 
+    attrs["features"] = sorted({name for name, pattern in _FEATURE_PATTERNS
+                                if pattern.search(t)})
+
+    # Primary material = the one mentioned EARLIEST in the text ("mild steel
+    # posts ... stainless steel cables" is a mild steel item). Overlapping
+    # names resolve naturally: "stainless steel" starts before its "steel".
+    best_pos = None
     for m in MATERIALS:
-        if m in t:
-            # Prefer the most specific: "stainless steel" beats "steel".
+        pos = t.find(m)
+        if pos >= 0 and (best_pos is None or pos < best_pos):
+            best_pos = pos
             attrs["material"] = m
-            break
 
     finishes = [f for f in FINISHES if f in t]
     attrs["finish"] = finishes[0] if finishes else None
@@ -306,6 +331,27 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
         else:
             mismatched.append(f"item_type: input={a} vs item={b}")
             differences.append(f"different item type ({b} instead of {a})")
+
+    # Add-on features: an item carrying a costly extra the input lacks
+    # (e.g. integrated seating) is a poor pricing comparable.
+    feats_in = set(input_attrs.get("features") or [])
+    feats_item = set(item_attrs.get("features") or [])
+    for feat in sorted(feats_in | feats_item):
+        w = 2.0 if feat == "integrated seating" else 1.0
+        weight_total += w
+        if feat in feats_in and feat in feats_item:
+            matched.append(f"feature: {feat}")
+            score += w
+        elif feat in feats_item:
+            mismatched.append(f"feature: item includes {feat}, input does not")
+            differences.append(
+                f"match includes {feat} which the input does not have "
+                "(its rate covers more than the input item)")
+        else:
+            mismatched.append(f"feature: input includes {feat}, item does not")
+            differences.append(
+                f"input includes {feat} which the match does not have")
+            score += w * 0.25
     judge("material", 3.0, lambda a, b: a == b or a in b or b in a,
           lambda a, b: f"different material ({b} instead of {a})")
     judge("category", 2.0, lambda a, b: a == b)
@@ -323,9 +369,14 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
     judge("height_mm", 0.75, _close)
     judge("unit_hint", 1.0, lambda a, b: a == b,
           lambda a, b: f"different unit basis ({b} instead of {a})")
-    judge("max_size_mm", 1.0, lambda a, b: _close(a, b, 0.35),
-          lambda a, b: f"very different overall size ({b:g}mm vs {a:g}mm "
-                       "largest dimension)")
+    # Overall size only means "product scale" for per-item products; for
+    # per-metre/per-m2 rates the stated sizes are profiles, not scale.
+    linear_units = ("m", "m2", "m3")
+    if (input_attrs.get("unit_hint") not in linear_units
+            and item_attrs.get("unit_hint") not in linear_units):
+        judge("max_size_mm", 1.5, lambda a, b: _close(a, b, 0.35),
+              lambda a, b: f"very different overall size ({b:g}mm vs {a:g}mm "
+                           "largest dimension)")
     judge("location", 0.5, lambda a, b: a == b)
 
     attr_score = (score / weight_total) if weight_total > 0 else 0.5

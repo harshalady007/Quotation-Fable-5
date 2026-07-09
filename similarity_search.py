@@ -54,9 +54,11 @@ class SimilaritySearcher:
         query_vec = self.vectorizer.transform([clean_query])
         text_sims = cosine_similarity(query_vec, self.matrix).ravel()
 
-        # Rescore a candidate pool larger than top_k so attribute matching
-        # can promote items that raw text similarity underrates.
-        pool = min(len(self.df), max(top_k * 8, 40))
+        # Rescore a candidate pool much larger than top_k so attribute
+        # matching can promote items that raw text similarity underrates
+        # (terse descriptions score badly on TF-IDF even when they are the
+        # best pricing comparables).
+        pool = min(len(self.df), max(top_k * 10, 200))
         candidates = text_sims.argsort()[::-1][:pool]
 
         input_type = input_attrs.get("item_type")
@@ -73,6 +75,25 @@ class SimilaritySearcher:
             if (input_type and item_type and input_type != item_type
                     and not types_compatible(input_type, item_type)):
                 final *= config.TYPE_MISMATCH_PENALTY
+            # Different size class (e.g. 50mm frame member vs 2.6m planter)
+            # is nearly as disqualifying as a different item type — but only
+            # for same-type, per-item products: for per-metre/per-m2 rates
+            # the stated sizes are profiles, not product scale.
+            in_size = input_attrs.get("max_size_mm")
+            item_size = self.item_attrs[idx].get("max_size_mm")
+            linear_units = ("m", "m2", "m3")
+            if (in_size and item_size and input_type and item_type == input_type
+                    and input_attrs.get("unit_hint") not in linear_units
+                    and (self.item_attrs[idx].get("unit_hint") or "") not in linear_units):
+                ratio = max(in_size, item_size) / max(min(in_size, item_size), 1.0)
+                if ratio > config.SIZE_MISMATCH_RATIO:
+                    final *= config.SIZE_MISMATCH_PENALTY
+            # A product with integrated seating is a different product from
+            # one without (planter vs planter-with-bench combo).
+            in_seat = "integrated seating" in (input_attrs.get("features") or [])
+            item_seat = "integrated seating" in (self.item_attrs[idx].get("features") or [])
+            if in_seat != item_seat:
+                final *= config.SEATING_MISMATCH_PENALTY
             row = self.df.iloc[idx]
             results.append({
                 "item_type": item_type,

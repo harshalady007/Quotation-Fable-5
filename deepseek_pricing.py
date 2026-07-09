@@ -91,6 +91,9 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
     if rates and anchor is not None:
         lines += [
             "",
+            f"CLOSEST MATCH RATE (highest similarity, Match 1): "
+            f"{matches[0]['rate']:,.2f} {config.DEFAULT_CURRENCY} - anchor "
+            "primarily on this item; use the others as corroboration.",
             f"STATISTICAL ANCHOR (similarity-weighted median of these matches): "
             f"{anchor:,.2f} {config.DEFAULT_CURRENCY}",
             f"HISTORICAL RATE RANGE of these matches: {min(rates):,.2f} to "

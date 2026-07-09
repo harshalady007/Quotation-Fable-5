@@ -38,13 +38,25 @@ WEAK_MATCH_THRESHOLD = 0.35
 # is multiplied by this penalty so same-type items always outrank it.
 TYPE_MISMATCH_PENALTY = 0.45
 
+# When two per-item products of the SAME type state sizes whose largest
+# dimensions differ by more than this ratio, the item is a different size
+# class (a 50mm frame member is not a comparable for a 2.6m planter) and
+# its score is penalized. Never applied to per-metre/per-m2 items, whose
+# stated sizes are profiles, not product scale.
+SIZE_MISMATCH_RATIO = 4.0
+SIZE_MISMATCH_PENALTY = 0.6
+
+# An item that includes integrated seating when the input does not (or
+# vice versa) is priced for a different product; its score is penalized.
+SEATING_MISMATCH_PENALTY = 0.7
+
 # Pricing is always computed from a fixed set of the strongest matches,
 # independent of how many matches the user displays (top_k). A match joins
 # the pricing set when its score is within PRICING_RELATIVE_CUTOFF of the
 # best score; the set has between MIN and MAX members.
 PRICING_MIN_MATCHES = 3
 PRICING_MAX_MATCHES = 5
-PRICING_RELATIVE_CUTOFF = 0.8
+PRICING_RELATIVE_CUTOFF = 0.85
 
 # The predicted price is clamped to this factor of the pricing set's
 # historical rate range. Wide enough to allow justified spec adjustments
