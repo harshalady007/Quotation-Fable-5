@@ -41,6 +41,8 @@ _NORMALIZE_PATTERNS = [
     (re.compile(r"(\d(?:\.\d+)?)\s*(?:m|meter[s]?|metre[s]?)\b"), r"\1m"),
     (re.compile(r"\bsq\.?\s*m\b|\bm²\b|\bsqm\b"), "m2"),
     (re.compile(r"\bcu\.?\s*m\b|\bm³\b|\bcum\b"), "m3"),
+    # "900 (W) x 380 (D) x 850 (H) mm" -> "900 x 380 x 850 mm"
+    (re.compile(r"\(\s*[lwhd]\s*\)"), " "),
     (re.compile(r"\bsupply\s*(?:&|and|\+)\s*install(?:ation)?\b"), "supply and install"),
     (re.compile(r"\bsupply\s*(?:&|and|\+)\s*deliver(?:y)?\b"), "supply and delivery"),
     (re.compile(r"\bsupply\s+only\b"), "supply only"),

@@ -13,7 +13,9 @@ from cleaner import normalize_unit
 # penalized harder than any other attribute.
 ITEM_TYPES = [
     ("litter bin", ["litter bin", "waste bin", "trash bin", "garbage bin",
-                    "dust bin", "dustbin", "trash can", "recycling bin"]),
+                    "dust bin", "dustbin", "trash can", "recycling bin",
+                    "recycle bin", "recycled bin", "waste bins",
+                    "pedal bin", "bin"]),
     ("planter", ["planter pot", "planter box", "planter", "flower pot",
                  "flower box", "plant pot", "plant box"]),
     ("bench", ["bench"]),
@@ -87,6 +89,11 @@ MATERIALS = [
     "iron", "granite", "marble", "ceramic", "porcelain", "rubber", "epdm",
     "frp", "grp", "acrylic", "polycarbonate", "fabric", "steel",
 ]
+
+# Word-boundary patterns so substrings never false-match ("fabricated"
+# must not read as material "fabric", "waterproof" is not location "roof").
+_MATERIAL_PATTERNS = [(m, re.compile(r"\b" + re.escape(m) + r"\b"))
+                      for m in MATERIALS]
 
 FINISHES = [
     "brushed", "polished", "painted", "powder coated", "galvanized",
@@ -219,13 +226,14 @@ def extract_attributes(text: str) -> dict:
     # posts ... stainless steel cables" is a mild steel item). Overlapping
     # names resolve naturally: "stainless steel" starts before its "steel".
     best_pos = None
-    for m in MATERIALS:
-        pos = t.find(m)
-        if pos >= 0 and (best_pos is None or pos < best_pos):
-            best_pos = pos
+    for m, pattern in _MATERIAL_PATTERNS:
+        hit = pattern.search(t)
+        if hit and (best_pos is None or hit.start() < best_pos):
+            best_pos = hit.start()
             attrs["material"] = m
 
-    finishes = [f for f in FINISHES if f in t]
+    finishes = [f for f in FINISHES
+                if re.search(r"\b" + re.escape(f) + r"\b", t)]
     attrs["finish"] = finishes[0] if finishes else None
     attrs["finishes_all"] = finishes
 
@@ -240,7 +248,7 @@ def extract_attributes(text: str) -> dict:
             break
 
     for loc in LOCATIONS:
-        if loc in t:
+        if re.search(r"\b" + re.escape(loc) + r"\b", t):
             attrs["location"] = "facade" if loc == "façade" else loc
             break
 
