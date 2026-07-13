@@ -20,9 +20,23 @@ ITEM_TYPES = [
     ("litter bin", ["litter bin", "waste bin", "trash bin", "garbage bin",
                     "dust bin", "dustbin", "trash can", "waste bins",
                     "general waste", "pedal bin", "bin"]),
+    # Components must be recognized before their parent product. A planter
+    # extension or a metal edge beside a balustrade is not a complete item.
+    ("planter component", ["planter side wall extension",
+                           "planter sidewall extension",
+                           "structure for planter", "planter structure"]),
     ("planter", ["planter pot", "planter box", "planter", "flower pot",
                  "flower box", "plant pot", "plant box"]),
-    ("bench", ["bench"]),
+    ("metal component", ["metal edge at balustrade", "metal edge"]),
+    ("raw material", ["raw material supply", "raw material"]),
+    ("cladding", ["cladding with coping", "metal cladding", "cladding"]),
+    ("sun lounger", ["sun lounger", "sunbed", "sun bed", "pool lounger",
+                     "wet lounger", "lounger"]),
+    # Table precedes chair/bench because picnic sets commonly mention both.
+    ("table", ["picnic table", "coffee table", "table set", "table"]),
+    ("bench", ["bench", "seater", "feature seating"]),
+    ("chair", ["lifeguard chair", "chair"]),
+    ("cabinet", ["towel cabinet", "cabinet"]),
     ("bollard", ["bollard"]),
     ("bike rack", ["bike rack", "cycle stand", "bicycle stand", "cycle rack",
                    "bike stand", "bicycle rack"]),
@@ -36,7 +50,6 @@ ITEM_TYPES = [
     ("fence", ["fence", "fencing"]),
     ("gate", ["gate"]),
     ("signage", ["signage", "sign board", "wayfinding", "sign"]),
-    ("table", ["picnic table", "table"]),
     ("drinking fountain", ["drinking fountain", "water fountain"]),
     ("tree grate", ["tree grate", "tree grille", "tree guard"]),
     ("play equipment", ["play equipment", "playground equipment", "swing",
@@ -74,6 +87,10 @@ ADDON_FEATURES = [
     ("irrigation", ["irrigation", "drain fitting", "drainage"]),
     ("water feature", ["water feature", "fountain"]),
     ("cladding", ["cladded", "cladding"]),
+    ("backrest", ["backrest", "back rest"]),
+    ("pedal", ["pedal"]),
+    ("liner", ["liner", "inner bin"]),
+    ("wheels", ["wheel", "wheels", "wheeled"]),
 ]
 
 _FEATURE_PATTERNS = [
@@ -87,7 +104,8 @@ _ITEM_TYPE_PATTERNS = [
 ]
 
 MATERIALS = [
-    "stainless steel", "mild steel", "carbon steel", "galvanized", "aluminium",
+    # Galvanized is a finish/coating, not a substrate.
+    "stainless steel", "mild steel", "carbon steel", "aluminium",
     "composite bamboo", "bamboo", "corten",
     "concrete", "uhpc", "precast", "timber", "wood", "hardwood", "glass",
     "gypsum", "pvc", "hdpe", "upvc", "copper", "brass", "bronze", "cast iron",
@@ -155,10 +173,11 @@ LOCATIONS = [
 _UNIT_TOKENS = (r"no|nos|each|item|set|pair|lm|rm|rmt|m2|sqm|m3|cum|kg|ton|"
                 r"day|hour|hr|ls|lump sum|running metre|linear metre|"
                 r"metre|meter|m")
-# An explicit "per <unit>" states the pricing basis and always wins over a
-# bare unit word that may just be counting parts ("11 no.s of cables").
-PER_UNIT_RE = re.compile(rf"\bper\s+({_UNIT_TOKENS})\b")
-UNIT_WORDS = re.compile(rf"\b({_UNIT_TOKENS})\b")
+# Only explicit pricing-basis language is accepted. Bare tokens are unsafe:
+# "ITEM NO J", "table set" and "2 m long" do not mean the quotation unit is
+# respectively no/set/metre.
+PER_UNIT_RE = re.compile(rf"\bper\s+(?:\d+(?:\.\d+)?\s+)?({_UNIT_TOKENS})\b")
+UNIT_LABEL_RE = re.compile(rf"\b(?:unit|uom|unit of measure)\s*[:=\-]\s*({_UNIT_TOKENS})\b")
 
 _NUM = r"(\d+(?:\.\d+)?)"
 DIA_RE = re.compile(rf"(?:{_NUM}\s*mm\s*dia|dia\.?\s*{_NUM}\s*mm|dia\.?\s*{_NUM}|"
@@ -175,6 +194,13 @@ DIMS_RE = re.compile(
 LEN_RE = re.compile(rf"\b(?:l|length)[\s:.]+{_NUM}\s*(mm|m)\b|{_NUM}\s*(m|mm)\s+(?:long|length)")
 HEIGHT_RE = re.compile(rf"{_NUM}\s*mm\s*h\b|\bh[\s:.]+{_NUM}\s*mm|height[:\s]*{_NUM}")
 SIZE_TOKEN_RE = re.compile(rf"{_NUM}\s*mm\b")
+CAPACITY_L_RE = re.compile(
+    rf"\b{_NUM}\s*(?:l|ltr|ltrs|litre|litres|liter|liters)\b"
+)
+CAPACITY_M3_RE = re.compile(rf"\b{_NUM}\s*(?:m3|cbm|cum)\b")
+COMPARTMENT_RE = re.compile(
+    r"\b(?:(single|double|dual|triple)|([1-9]\d*))\s+compartment[s]?\b"
+)
 
 
 # Scopes whose rates are convertible into each other via the company's
@@ -216,7 +242,9 @@ def extract_attributes(text: str) -> dict:
         "material": None, "finish": None, "grade": None, "scope": None,
         "category": None, "location": None, "unit_hint": None, "brand": None,
         "diameter_mm": None, "thickness_mm": None, "length_mm": None,
-        "height_mm": None, "dimensions": None, "sizes_mm": [],
+        "width_mm": None, "depth_mm": None, "height_mm": None,
+        "capacity_l": None, "compartments": None, "mobility": None,
+        "civil_works": None, "dimensions": None, "sizes_mm": [],
     }
 
     for canonical, pattern in _ITEM_TYPE_PATTERNS:
@@ -231,11 +259,15 @@ def extract_attributes(text: str) -> dict:
     # posts ... stainless steel cables" is a mild steel item). Overlapping
     # names resolve naturally: "stainless steel" starts before its "steel".
     best_pos = None
+    materials_all = []
     for m, pattern in _MATERIAL_PATTERNS:
         hit = pattern.search(t)
+        if hit:
+            materials_all.append((hit.start(), m))
         if hit and (best_pos is None or hit.start() < best_pos):
             best_pos = hit.start()
             attrs["material"] = m
+    attrs["materials_all"] = [m for _, m in sorted(materials_all)]
 
     finishes = [f for f in FINISHES
                 if re.search(r"\b" + re.escape(f) + r"\b", t)]
@@ -257,9 +289,34 @@ def extract_attributes(text: str) -> dict:
             attrs["location"] = "facade" if loc == "façade" else loc
             break
 
-    u = PER_UNIT_RE.search(t) or UNIT_WORDS.search(t)
+    u = PER_UNIT_RE.search(t) or UNIT_LABEL_RE.search(t)
     if u:
         attrs["unit_hint"] = normalize_unit(u.group(1))
+
+    if re.search(r"\bwithout\s+civil\s+works\b|\bexcluding\s+civil\s+works\b", t):
+        attrs["civil_works"] = "excluded"
+    elif re.search(r"\bincluding\s+civil\s+works\b|\bwith\s+civil\s+works\b", t):
+        attrs["civil_works"] = "included"
+
+    if re.search(r"\bmovable\b|\bmobile\b|\bportable\b|\bfree[\s\-]*standing\b", t):
+        attrs["mobility"] = "movable"
+    elif re.search(r"\bfixed\b|\bbase[\s\-]*plated\b|\bembedded\b", t):
+        attrs["mobility"] = "fixed"
+
+    cap = CAPACITY_L_RE.search(t)
+    if cap:
+        attrs["capacity_l"] = _first_number(cap)
+    else:
+        cap_m3 = CAPACITY_M3_RE.search(t)
+        if cap_m3:
+            value = _first_number(cap_m3)
+            attrs["capacity_l"] = value * 1000 if value is not None else None
+
+    compartments = COMPARTMENT_RE.search(t)
+    if compartments:
+        word, number = compartments.groups()
+        mapping = {"single": 1, "double": 2, "dual": 2, "triple": 3}
+        attrs["compartments"] = mapping.get(word, int(number) if number else None)
 
     b = re.search(r"brand\s*(?:&\s*origin)?\s*[\":]*\s*\"?([a-z0-9 \-]{2,30})\"?", t)
     if b:
@@ -293,6 +350,11 @@ def extract_attributes(text: str) -> dict:
             first = next((g for g in dims.groups() if g is not None), None)
             if first is not None:
                 attrs["length_mm"] = float(first)
+        dim_values = [float(g) for g in dims.groups() if g is not None]
+        if len(dim_values) >= 2:
+            attrs["width_mm"] = dim_values[1]
+        if len(dim_values) >= 3 and attrs["height_mm"] is None:
+            attrs["height_mm"] = dim_values[2]
 
     sizes = {float(x) for x in SIZE_TOKEN_RE.findall(t)}
     # Numbers inside a dimension chain ("l 17770 x w 3050 x h 800mm") share
@@ -309,6 +371,14 @@ def extract_attributes(text: str) -> dict:
     # Characteristic overall size: the largest stated dimension. Lets the
     # comparison flag "same item type but a much bigger/smaller one".
     attrs["max_size_mm"] = attrs["sizes_mm"][-1] if attrs["sizes_mm"] else None
+    if attrs["length_mm"] and attrs["width_mm"]:
+        attrs["footprint_mm2"] = attrs["length_mm"] * attrs["width_mm"]
+    else:
+        attrs["footprint_mm2"] = None
+    if attrs["footprint_mm2"] and attrs["height_mm"]:
+        attrs["envelope_mm3"] = attrs["footprint_mm2"] * attrs["height_mm"]
+    else:
+        attrs["envelope_mm3"] = None
     # Size proxy for price interpolation: prefer the stated length (the
     # dominant cost driver), fall back to the largest dimension.
     if attrs["length_mm"] and attrs["length_mm"] >= 100:
@@ -397,7 +467,9 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
             differences.append(
                 f"input includes {feat} which the match does not have")
             score += w * 0.25
-    judge("material", 3.0, lambda a, b: a == b or a in b or b in a,
+    # Generic "steel" must not receive full material credit against stainless
+    # or mild steel; those price very differently.
+    judge("material", 3.0, lambda a, b: a == b,
           lambda a, b: f"different material ({b} instead of {a})")
     judge("category", 2.0, lambda a, b: a == b)
     # Scopes within the convertible supply/install groups count as matched:
@@ -418,6 +490,14 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
           lambda a, b: f"different thickness ({b:g}mm instead of {a:g}mm)")
     judge("length_mm", 0.75, _close)
     judge("height_mm", 0.75, _close)
+    judge("capacity_l", 2.5, lambda a, b: _close(a, b, 0.20),
+          lambda a, b: f"different capacity ({b:g}L instead of {a:g}L)")
+    judge("compartments", 1.5, lambda a, b: a == b,
+          lambda a, b: f"different compartment count ({b} instead of {a})")
+    judge("mobility", 1.0, lambda a, b: a == b,
+          lambda a, b: f"different fixing/mobility ({b} instead of {a})")
+    judge("civil_works", 2.0, lambda a, b: a == b,
+          lambda a, b: f"different civil-works scope ({b} instead of {a})")
     judge("unit_hint", 1.0, lambda a, b: a == b,
           lambda a, b: f"different unit basis ({b} instead of {a})")
     # Overall size only means "product scale" for per-item products; for

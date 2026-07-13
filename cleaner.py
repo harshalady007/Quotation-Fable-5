@@ -55,6 +55,23 @@ _NORMALIZE_PATTERNS = [
 _JUNK_CHARS = re.compile(r"[^\w\s\.\,\/\-\*\(\)%x\"°²³&+:]")
 _MULTI_SPACE = re.compile(r"\s+")
 
+# Boilerplate copied from source quotations is useful for traceability but is
+# not product evidence.  Leaving it in TF-IDF makes records match because they
+# share a company name or a quotation total rather than because the products
+# are comparable.
+_SEARCH_NOISE_PATTERNS = [
+    re.compile(
+        r"\btotal\s+value\s+in\s+aed\b\s*(?:aed)?\s*[\d,]+(?:\.\d+)?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bbrand\s*&\s*origin\b\s*[\"']?bluestream[\"']?\s*,?\s*"
+        r"[\"']?made\s+in\s+uae[\"']?",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bmade\s+in\s+uae\b", re.IGNORECASE),
+]
+
 
 def normalize_unit(unit) -> str:
     if unit is None or (isinstance(unit, float) and pd.isna(unit)):
@@ -84,25 +101,42 @@ def normalize_text(text) -> str:
     return s
 
 
+def normalize_search_text(text) -> str:
+    """Normalize product text after removing non-product quotation noise."""
+    if text is None or (isinstance(text, float) and pd.isna(text)):
+        return ""
+    s = str(text)
+    for pattern in _SEARCH_NOISE_PATTERNS:
+        s = pattern.sub(" ", s)
+    return normalize_text(s)
+
+
 def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     """Drop unusable rows and add clean_text / search_text / unit_norm columns."""
     df = df.copy()
 
     # Combined raw description (item name + description when both exist).
+    # Most source descriptions already begin with the item name.  The old
+    # substring check was reversed, producing "Bench Bench ..." and doubling
+    # the weight of generic item words in TF-IDF.
     def combine(row):
-        parts = []
-        for f in ("item_name", "description"):
-            v = row.get(f)
-            if v is not None and not (isinstance(v, float) and pd.isna(v)):
-                v = str(v).strip()
-                if v and v.lower() not in ("nan", "none"):
-                    # Avoid "Bollard\nBollard ..." duplication.
-                    if not parts or v.lower() not in parts[0].lower():
-                        parts.append(v)
-        return "\n".join(parts)
+        def value(field):
+            v = row.get(field)
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return ""
+            v = str(v).strip()
+            return "" if v.lower() in ("nan", "none") else v
+
+        item_name = value("item_name")
+        description = value("description")
+        if item_name and description:
+            if item_name.lower() in description.lower():
+                return description
+            return f"{item_name}\n{description}"
+        return description or item_name
 
     df["full_description"] = df.apply(combine, axis=1)
-    df["clean_text"] = df["full_description"].map(normalize_text)
+    df["clean_text"] = df["full_description"].map(normalize_search_text)
 
     # Rows must have a usable description and a valid positive rate.
     df = df[df["clean_text"].str.len() >= 3]
@@ -114,7 +148,7 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     # Searchable text combines every useful text field.
     extra = []
     for field in ("category", "section", "location", "remarks"):
-        extra.append(df[field].map(normalize_text))
+        extra.append(df[field].map(normalize_search_text))
     df["search_text"] = df["clean_text"]
     for col in extra:
         df["search_text"] = (df["search_text"] + " " + col.fillna("")).str.strip()

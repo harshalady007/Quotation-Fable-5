@@ -44,12 +44,8 @@ with st.sidebar:
     st.write(f"**File:** `{engine.data_path}`")
     st.write(f"**Sheet:** {engine.sheet}")
     st.write(f"**Usable rows:** {len(engine.dataset)}")
-    if not config.DEEPSEEK_API_KEY:
-        st.warning(
-            "DEEPSEEK_API_KEY is not set — predictions will use the "
-            "statistical fallback (median/weighted average of matches). "
-            "See the README for how to set the key."
-        )
+    st.write(f"**Pricing eligible:** {engine.data_quality['pricing_eligible_rows']}")
+    st.caption("Unsafe or incomplete records remain visible but are quarantined from pricing.")
 
 description = st.text_area(
     "Item / service description",
@@ -58,26 +54,55 @@ description = st.text_area(
     height=100,
 )
 
+st.subheader("Confirmed pricing details")
+f1, f2, f3, f4 = st.columns(4)
+family = f1.selectbox("Product family *", ["", "planter", "litter bin",
+                                            "recycle bin", "bench", "bollard",
+                                            "bike rack"])
+unit = f2.selectbox("Unit *", ["", "no", "m", "m2", "set"])
+scope = f3.selectbox("Commercial scope *", ["", "supply only",
+                                              "supply and delivery",
+                                              "supply and install"])
+civil = f4.selectbox("Civil works", ["", "excluded", "included"])
+f5, f6, f7, f8 = st.columns(4)
+material = f5.text_input("Primary material *")
+quantity = f6.number_input("Quantity", min_value=0.0, value=0.0)
+capacity_l = f7.number_input("Capacity (litres)", min_value=0.0, value=0.0)
+diameter_mm = f8.number_input("Diameter (mm)", min_value=0.0, value=0.0)
+f9, f10, f11 = st.columns(3)
+length_mm = f9.number_input("Length (mm)", min_value=0.0, value=0.0)
+width_mm = f10.number_input("Width (mm)", min_value=0.0, value=0.0)
+height_mm = f11.number_input("Height (mm)", min_value=0.0, value=0.0)
+
 if st.button("Predict price", type="primary"):
     if not description.strip():
         st.warning("Please enter a description first.")
         st.stop()
     try:
         with st.spinner("Searching history and estimating price..."):
-            result = engine.predict_price(description, top_k=top_k)
+            context = {
+                "product_family": family, "unit": unit, "scope": scope,
+                "civil_works": civil, "material": material,
+                "quantity": quantity or None, "capacity_l": capacity_l or None,
+                "diameter_mm": diameter_mm or None, "length_mm": length_mm or None,
+                "width_mm": width_mm or None, "height_mm": height_mm or None,
+            }
+            result = engine.predict_price(description, top_k=top_k,
+                                          pricing_context=context)
     except (ValueError, SearchError) as exc:
         st.error(str(exc))
         st.stop()
 
     # ---- Headline result ----
+    st.info("Automatic price issued" if result["status"] == "priced"
+            else "Manual estimator review required")
     c1, c2, c3, c4 = st.columns(4)
     price = result["predicted_unit_price"]
     c1.metric("Predicted unit price",
               f"{price:,.2f} {result['currency']}" if price is not None else "n/a")
     c2.metric("Unit", result["unit"] or "unknown")
     c3.metric("Confidence", result["confidence"])
-    c4.metric("Price source",
-              "Statistical fallback" if result["fallback_used"] else "DeepSeek AI")
+    c4.metric("Price source", result.get("price_source", "Comparable engine"))
 
     for w in result["warnings"]:
         st.warning(w)

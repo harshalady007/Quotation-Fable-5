@@ -1,13 +1,13 @@
-"""Ties loading, cleaning, search and DeepSeek pricing into one API."""
+"""Production orchestration for guarded historical-comparable pricing."""
 
 import logging
 from functools import lru_cache
 
 import config
 from cleaner import clean_dataset
+from data_quality import annotate_data_quality, quality_summary
 from data_loader import load_dataset
-from deepseek_pricing import (compute_anchor, predict_price_with_deepseek,
-                              scope_adjusted_rate)
+from production_pricing import price_from_comparables
 from similarity_search import SimilaritySearcher
 
 logger = logging.getLogger(__name__)
@@ -58,113 +58,94 @@ class PricingEngine:
     def __init__(self, data_path: str | None = None):
         self.data_path = data_path or config.DATA_PATH
         raw = load_dataset(self.data_path)          # raises DataLoadError
-        self.dataset = clean_dataset(raw)           # raises EmptyDatasetError
+        self.dataset = annotate_data_quality(
+            clean_dataset(raw)                      # raises EmptyDatasetError
+        )
+        self.data_quality = quality_summary(self.dataset)
         self.column_mapping = raw.attrs.get("column_mapping", {})
         self.sheet = raw.attrs.get("sheet", "")
         self.searcher = SimilaritySearcher(self.dataset)
         logger.info("PricingEngine ready: %d usable rows from sheet %r",
                     len(self.dataset), self.sheet)
 
-    def predict_price(self, input_description: str, top_k: int = 5) -> dict:
-        """Full pipeline: search -> compare -> DeepSeek (or fallback) -> result."""
+    def predict_price(self, input_description: str, top_k: int = 5,
+                      pricing_context: dict | None = None) -> dict:
+        """Production pipeline: retrieve -> validate -> price or abstain.
+
+        ``pricing_context`` contains user-confirmed structured fields.  Free
+        text remains supported for backward compatibility, but missing
+        price-defining information produces a manual-review decision instead
+        of a fabricated number.
+        """
         if not input_description or not str(input_description).strip():
             raise ValueError("Please enter an item or service description.")
 
-        # Retrieve enough candidates for both the display table (top_k) and
-        # the pricing set, which is always chosen by the same fixed rule so
-        # the predicted price does not depend on top_k.
-        pool_size = max(int(top_k), config.PRICING_MAX_MATCHES)
-        search = self.searcher.search(input_description, top_k=pool_size)
-        pool = search["matches"]
-        input_type = search["input_attributes"].get("item_type")
-        input_unit = search["input_attributes"].get("unit_hint")
-        pricing_matches = select_pricing_matches(pool, input_type, input_unit)
-        pricing_ranks = {m["rank"] for m in pricing_matches}
-        matches = pool[:max(int(top_k), 1)]
-        input_scope = search["input_attributes"].get("scope")
-        for m in pool:
-            m["used_for_pricing"] = m["rank"] in pricing_ranks
-            m["scope_adjusted_rate"] = scope_adjusted_rate(
-                m.get("rate"), m.get("scope"), input_scope)
-
-        warnings = []
-        if input_unit and not any((m.get("unit_norm") or "") == input_unit
-                                  for m in pricing_matches):
-            units_found = sorted({m.get("unit_norm") or "unknown"
-                                  for m in pricing_matches})
-            warnings.append(
-                f"The input is priced per '{input_unit}' but no historical "
-                f"match uses that unit (matches are per {', '.join(units_found)}). "
-                "Rates are NOT directly comparable — treat this estimate as "
-                "indicative only."
-            )
-        if input_type and not any(m.get("item_type") == input_type
-                                  for m in pricing_matches):
-            warnings.append(
-                f"No historical items of type '{input_type}' were found in "
-                "the dataset; the price is based on the closest other items "
-                "and should be treated with extra caution."
-            )
-        same_type_rates = [m["rate"] for m in pool
-                           if input_type and m.get("item_type") == input_type
-                           and m.get("rate")]
-        if same_type_rates and max(same_type_rates) > 2.5 * min(same_type_rates):
-            warnings.append(
-                f"Historical '{input_type}' rates vary widely "
-                f"({min(same_type_rates):,.0f} to {max(same_type_rates):,.0f}) — "
-                "different product tiers exist. The prediction uses the "
-                "closest comparables by size and material; check the matches "
-                "table for cheaper/premium alternatives."
-            )
-        input_size = search["input_attributes"].get("max_size_mm")
-        if input_size and pricing_matches:
-            comp_sizes = [m for m in pricing_matches
-                          if any("overall size" in d for d in m["differences"])]
-            if len(comp_sizes) == len(pricing_matches):
-                warnings.append(
-                    "All historical matches are a very different overall size "
-                    "from the input item; the rate has been adjusted for size "
-                    "but should be verified."
-                )
-        if search["input_attributes"].get("scope_assumed"):
-            assumed = search["input_attributes"].get("scope")
-            hint = (" (free-standing/movable items carry no installation work)"
-                    if assumed == "supply and delivery" else "")
-            warnings.append(
-                f"No work scope stated in the input; assumed '{assumed}'"
-                f"{hint}. Mention e.g. 'supply only' to override."
-            )
-        if search["weak_matches"]:
-            warnings.append(
-                f"Best match similarity is only {search['best_score']:.2f}; "
-                "no strong historical match was found. Treat the prediction "
-                "with caution."
-            )
-
-        prediction = predict_price_with_deepseek(
-            input_description, search["input_attributes"], pricing_matches,
-            search["weak_matches"],
+        search = self.searcher.search(
+            input_description,
+            top_k=max(1, int(top_k)),
+            pricing_context=pricing_context,
         )
-        anchor, anchor_method = compute_anchor(pricing_matches,
-                                               search["input_attributes"])
+        candidates = search["candidate_matches"]
+        decision = price_from_comparables(search["input_attributes"], candidates)
+        pricing_matches = decision["comparables"]
+        pricing_ranks = {m["rank"] for m in pricing_matches}
+        matches = search["matches"]
+        for match in candidates:
+            match["used_for_pricing"] = match["rank"] in pricing_ranks
+            # Production comparables are exact-scope only; no hidden 20%
+            # conversion is applied.
+            match["scope_adjusted_rate"] = match.get("rate")
+
+        warnings = list(decision["review_reasons"])
+        if search["input_attributes"].get("quantity"):
+            warnings.append(
+                "Quantity was recorded, but the present historical dataset has "
+                "no usable quantity column; volume discounts are not included "
+                "in the unit-price calculation."
+            )
+        quarantined_displayed = [m for m in matches if not m.get("pricing_eligible", True)]
+        if quarantined_displayed:
+            warnings.append(
+                f"{len(quarantined_displayed)} displayed historical match(es) "
+                "are quarantined from automatic pricing because of data-quality defects."
+            )
+
+        if decision["status"] == "priced":
+            reasoning = (
+                f"Automatic price based on {len(pricing_matches)} validated "
+                "same-family, same-unit and same-scope historical comparables. "
+                "A robust weighted median limits the influence of individual rates."
+            )
+        else:
+            reasoning = (
+                "No automatic price was issued because the evidence failed one "
+                "or more production safety gates. Review the reasons and confirm "
+                "the missing specifications or historical comparables."
+            )
 
         return {
+            "status": decision["status"],
             "input_description": input_description,
             "input_attributes": search["input_attributes"],
-            "statistical_anchor": round(anchor, 2) if anchor is not None else None,
-            "anchor_method": anchor_method,
+            "statistical_anchor": decision.get("indicative_price"),
+            "anchor_method": decision["pricing_method"],
             "pricing_matches_used": sorted(pricing_ranks),
-            "predicted_unit_price": prediction["predicted_unit_price"],
-            "currency": prediction["currency"],
-            "unit": prediction["unit"],
-            "confidence": prediction["confidence"],
-            "reasoning": prediction["reasoning"],
-            "price_basis": prediction.get("price_basis", ""),
-            "adjustments": prediction.get("adjustments", []),
-            "fallback_used": prediction.get("fallback_used", False),
+            "predicted_unit_price": decision["predicted_unit_price"],
+            "indicative_price": decision.get("indicative_price"),
+            "price_interval": decision.get("price_interval"),
+            "currency": config.DEFAULT_CURRENCY,
+            "unit": search["input_attributes"].get("unit_hint") or "unknown",
+            "confidence": decision["confidence"],
+            "reasoning": reasoning,
+            "price_basis": decision["pricing_method"],
+            "adjustments": [],
+            "fallback_used": False,
+            "price_source": "Production comparable engine",
+            "review_reasons": decision["review_reasons"],
             "matches": matches,
             "weak_matches": search["weak_matches"],
-            "warnings": warnings + prediction.get("warnings", []),
+            "warnings": warnings,
+            "data_quality": self.data_quality,
         }
 
 

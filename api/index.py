@@ -17,16 +17,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-import config
 from cleaner import EmptyDatasetError
 from data_loader import DataLoadError
 from similarity_search import SearchError
 
 app = FastAPI(
     title="Quotation Pricing Bot API",
-    description="Predict a unit price for a new item from historical "
-                "quotation data using similarity search + DeepSeek.",
-    version="1.0.0",
+    description="Guarded comparable pricing from validated historical "
+                "quotation evidence, with manual-review abstention.",
+    version="2.0.0",
 )
 
 _engine = None
@@ -51,6 +50,28 @@ class PredictRequest(BaseModel):
     description: str = Field(..., min_length=3, max_length=2000,
                              description="Item or service description to price")
     top_k: int = Field(5, ge=1, le=15, description="Number of similar items to use")
+    product_family: str | None = Field(None, max_length=100)
+    unit: str | None = Field(None, max_length=30)
+    scope: str | None = Field(None, max_length=100)
+    material: str | None = Field(None, max_length=100)
+    civil_works: bool | str | None = None
+    quantity: float | None = Field(None, gt=0)
+    capacity_l: float | None = Field(None, gt=0)
+    length_mm: float | None = Field(None, gt=0)
+    width_mm: float | None = Field(None, gt=0)
+    height_mm: float | None = Field(None, gt=0)
+    diameter_mm: float | None = Field(None, gt=0)
+    thickness_mm: float | None = Field(None, gt=0)
+    features: list[str] | None = None
+
+    def pricing_context(self) -> dict:
+        fields = (
+            "product_family", "unit", "scope", "material", "civil_works",
+            "quantity", "capacity_l", "length_mm", "width_mm", "height_mm",
+            "diameter_mm", "thickness_mm", "features",
+        )
+        return {name: getattr(self, name) for name in fields
+                if getattr(self, name) not in (None, "", [])}
 
 
 _UI_PATH = Path(__file__).resolve().parent / "ui.html"
@@ -72,8 +93,8 @@ def root():
 def api_info():
     return {
         "service": "Quotation Pricing Bot API",
-        "endpoints": {"POST /predict": "predict a unit price",
-                      "GET /health": "dataset and API-key status"},
+        "endpoints": {"POST /predict": "price or request manual review",
+                      "GET /health": "dataset and quality-gate status"},
         "docs": "/docs",
     }
 
@@ -85,7 +106,8 @@ def health():
         "status": "ok",
         "dataset_rows": len(engine.dataset),
         "sheet": engine.sheet,
-        "deepseek_configured": bool(config.DEEPSEEK_API_KEY),
+        "pricing_mode": "guarded deterministic comparables",
+        "data_quality": engine.data_quality,
     }
 
 
@@ -93,6 +115,10 @@ def health():
 def predict(req: PredictRequest):
     engine = get_engine()
     try:
-        return engine.predict_price(req.description, top_k=req.top_k)
+        return engine.predict_price(
+            req.description,
+            top_k=req.top_k,
+            pricing_context=req.pricing_context(),
+        )
     except (ValueError, SearchError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))

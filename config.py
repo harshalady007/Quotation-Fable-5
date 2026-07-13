@@ -63,6 +63,15 @@ PRICING_MIN_MATCHES = 3
 PRICING_MAX_MATCHES = 5
 PRICING_RELATIVE_CUTOFF = 0.85
 
+# Production comparable gates.  Pricing always considers a fixed number of
+# ranked candidates, independent of how many rows the UI displays.
+PRICING_CANDIDATE_RESULTS = 50
+PRODUCTION_MIN_COMPARABLES = 3
+PRODUCTION_MIN_BEST_SCORE = 0.45
+PRODUCTION_MAX_RATE_RATIO = 2.0
+PRODUCTION_GATE_WITHIN_20 = 0.80
+PRODUCTION_GATE_MIN_CASES = 25
+
 # The predicted price is clamped to this factor of the pricing set's
 # historical rate range. Wide enough to allow justified spec adjustments
 # (e.g. SS316 vs mild steel comps can legitimately be ~3x), while still

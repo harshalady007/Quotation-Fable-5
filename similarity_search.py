@@ -1,7 +1,5 @@
 """Hybrid similarity search: TF-IDF text similarity + attribute scoring."""
 
-import re
-
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -9,7 +7,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import config
 from attribute_extractor import (compare_attributes, detect_scope,
                                  extract_attributes, types_compatible)
-from cleaner import normalize_text, normalize_unit
+from cleaner import normalize_search_text, normalize_text, normalize_unit
+from pricing_context import apply_pricing_context
 
 
 class SearchError(Exception):
@@ -39,30 +38,25 @@ class SimilaritySearcher:
                 attrs["unit_hint"] = unit_norm
             # The scope of work usually lives in its own column (mapped to
             # category), not in the item description.
+            category_text = normalize_text(self.df.iloc[i].get("category"))
+            category_attrs = extract_attributes(category_text)
             if not attrs.get("scope"):
-                attrs["scope"] = detect_scope(
-                    normalize_text(self.df.iloc[i].get("category")))
+                attrs["scope"] = detect_scope(category_text)
+            if not attrs.get("civil_works"):
+                attrs["civil_works"] = category_attrs.get("civil_works")
             self.item_attrs.append(attrs)
 
-    def search(self, query: str, top_k: int = 5) -> dict:
+    def search(self, query: str, top_k: int = 5,
+               pricing_context: dict | None = None) -> dict:
         """Return top_k matches with combined text+attribute scoring."""
         if not query or not str(query).strip():
             raise SearchError("Input description is empty.")
         top_k = max(1, min(int(top_k), 20))
 
-        clean_query = normalize_text(query)
-        input_attrs = extract_attributes(clean_query)
-        # Estimating default: when the input does not state a work scope,
-        # assume supply and installation (dataset items keep their own
-        # scope) — unless the item is explicitly free-standing/movable, in
-        # which case there is no installation work to price.
-        if input_attrs.get("scope") is None:
-            if re.search(r"\bfree[\s\-]*standing\b|\bmovable\b|\bportable\b",
-                         clean_query):
-                input_attrs["scope"] = "supply and delivery"
-            else:
-                input_attrs["scope"] = "supply and install"
-            input_attrs["scope_assumed"] = True
+        clean_query = normalize_search_text(query)
+        input_attrs = apply_pricing_context(
+            extract_attributes(clean_query), pricing_context
+        )
 
         query_vec = self.vectorizer.transform([clean_query])
         text_sims = cosine_similarity(query_vec, self.matrix).ravel()
@@ -115,6 +109,7 @@ class SimilaritySearcher:
                 "max_size_mm": self.item_attrs[idx].get("max_size_mm"),
                 "size_proxy": self.item_attrs[idx].get("size_proxy"),
                 "size_proxy_kind": self.item_attrs[idx].get("size_proxy_kind"),
+                "attributes": dict(self.item_attrs[idx]),
                 "description": row["full_description"],
                 "clean_description": row["clean_text"],
                 "unit": row.get("unit") if pd.notna(row.get("unit")) else None,
@@ -125,6 +120,8 @@ class SimilaritySearcher:
                 "category": _safe_str(row.get("category")) or _safe_str(row.get("section")),
                 "source": _safe_str(row.get("source")),
                 "date": _safe_str(row.get("date")),
+                "pricing_eligible": bool(row.get("pricing_eligible", True)),
+                "data_quality_flags": list(row.get("data_quality_flags") or []),
                 "similarity_score": round(final, 4),
                 "text_similarity": round(text_score, 4),
                 "attribute_score": comparison["attribute_score"],
@@ -136,15 +133,17 @@ class SimilaritySearcher:
             })
 
         results.sort(key=lambda r: r["similarity_score"], reverse=True)
-        results = results[:top_k]
-        for rank, r in enumerate(results, 1):
+        candidate_results = results[:config.PRICING_CANDIDATE_RESULTS]
+        for rank, r in enumerate(candidate_results, 1):
             r["rank"] = rank
+        display_results = candidate_results[:top_k]
 
-        best = results[0]["similarity_score"] if results else 0.0
+        best = candidate_results[0]["similarity_score"] if candidate_results else 0.0
         return {
             "input_clean": clean_query,
             "input_attributes": input_attrs,
-            "matches": results,
+            "matches": display_results,
+            "candidate_matches": candidate_results,
             "weak_matches": best < config.WEAK_MATCH_THRESHOLD,
             "best_score": best,
         }

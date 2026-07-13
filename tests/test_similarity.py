@@ -117,16 +117,15 @@ def test_search_result_shape():
     assert "bollard" in m["clean_description"]
 
 
-def test_scope_defaults_to_supply_and_install():
+def test_scope_is_never_assumed_for_production_pricing():
     searcher = SimilaritySearcher(clean_dataset(SAMPLE))
-    # No scope in the input -> assumed supply and install.
+    # Missing commercial scope must remain missing so the production gate can
+    # request confirmation instead of silently adding installation cost.
     out = searcher.search("stainless steel handrail 50mm dia brushed", top_k=2)
-    assert out["input_attributes"]["scope"] == "supply and install"
-    assert out["input_attributes"].get("scope_assumed") is True
+    assert out["input_attributes"]["scope"] is None
     # Explicit scope is respected, not overridden.
     out = searcher.search("supply only aluminium handrail 40mm dia", top_k=2)
     assert out["input_attributes"]["scope"] == "supply only"
-    assert "scope_assumed" not in out["input_attributes"]
 
 
 def test_empty_query_rejected():
@@ -243,12 +242,12 @@ def test_install_price_is_20pct_above_supply_only(monkeypatch):
     assert abs(p_install - p_supply * 1.2) < 0.01 or p_install == p_supply
 
 
-def test_freestanding_defaults_to_supply_and_delivery():
+def test_freestanding_does_not_guess_commercial_scope():
     searcher = SimilaritySearcher(clean_dataset(SAMPLE))
     out = searcher.search("granite bench polished finish, free standing, "
                           "L 2000 x W 540 x H 777mm", top_k=2)
-    assert out["input_attributes"]["scope"] == "supply and delivery"
-    assert out["input_attributes"]["scope_assumed"] is True
+    assert out["input_attributes"]["scope"] is None
+    assert out["input_attributes"]["mobility"] == "movable"
 
 
 def test_dense_band_detection():
