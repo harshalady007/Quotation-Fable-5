@@ -87,7 +87,7 @@ if st.button("Predict price", type="primary"):
     if result.get("statistical_anchor") is not None:
         st.write(
             f"**Statistical anchor:** {result['statistical_anchor']:,.2f} "
-            f"{result['currency']} (similarity-weighted median of the "
+            f"{result['currency']} ({result.get('anchor_method', '')} over the "
             f"{len(result.get('pricing_matches_used', []))} strongest matches — "
             "the price is always computed from these, regardless of how many "
             "matches are displayed)"

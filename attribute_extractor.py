@@ -287,6 +287,12 @@ def extract_attributes(text: str) -> dict:
     dims = DIMS_RE.search(t)
     if dims:
         attrs["dimensions"] = dims.group(0).strip()
+        # Dimension chains are conventionally L x W x H: the first number
+        # is the length — the dominant cost driver for most items.
+        if attrs["length_mm"] is None:
+            first = next((g for g in dims.groups() if g is not None), None)
+            if first is not None:
+                attrs["length_mm"] = float(first)
 
     sizes = {float(x) for x in SIZE_TOKEN_RE.findall(t)}
     # Numbers inside a dimension chain ("l 17770 x w 3050 x h 800mm") share
@@ -303,6 +309,17 @@ def extract_attributes(text: str) -> dict:
     # Characteristic overall size: the largest stated dimension. Lets the
     # comparison flag "same item type but a much bigger/smaller one".
     attrs["max_size_mm"] = attrs["sizes_mm"][-1] if attrs["sizes_mm"] else None
+    # Size proxy for price interpolation: prefer the stated length (the
+    # dominant cost driver), fall back to the largest dimension.
+    if attrs["length_mm"] and attrs["length_mm"] >= 100:
+        attrs["size_proxy"] = attrs["length_mm"]
+        attrs["size_proxy_kind"] = "length"
+    elif attrs["max_size_mm"] and attrs["max_size_mm"] >= 100:
+        attrs["size_proxy"] = attrs["max_size_mm"]
+        attrs["size_proxy_kind"] = "max"
+    else:
+        attrs["size_proxy"] = None
+        attrs["size_proxy_kind"] = None
     return attrs
 
 

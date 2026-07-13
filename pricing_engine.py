@@ -6,8 +6,8 @@ from functools import lru_cache
 import config
 from cleaner import clean_dataset
 from data_loader import load_dataset
-from deepseek_pricing import (predict_price_with_deepseek,
-                              scope_adjusted_rate, weighted_median_rate)
+from deepseek_pricing import (compute_anchor, predict_price_with_deepseek,
+                              scope_adjusted_rate)
 from similarity_search import SimilaritySearcher
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,17 @@ class PricingEngine:
                 "the dataset; the price is based on the closest other items "
                 "and should be treated with extra caution."
             )
+        same_type_rates = [m["rate"] for m in pool
+                           if input_type and m.get("item_type") == input_type
+                           and m.get("rate")]
+        if same_type_rates and max(same_type_rates) > 2.5 * min(same_type_rates):
+            warnings.append(
+                f"Historical '{input_type}' rates vary widely "
+                f"({min(same_type_rates):,.0f} to {max(same_type_rates):,.0f}) — "
+                "different product tiers exist. The prediction uses the "
+                "closest comparables by size and material; check the matches "
+                "table for cheaper/premium alternatives."
+            )
         input_size = search["input_attributes"].get("max_size_mm")
         if input_size and pricing_matches:
             comp_sizes = [m for m in pricing_matches
@@ -134,12 +145,14 @@ class PricingEngine:
             input_description, search["input_attributes"], pricing_matches,
             search["weak_matches"],
         )
-        anchor = weighted_median_rate(pricing_matches)
+        anchor, anchor_method = compute_anchor(pricing_matches,
+                                               search["input_attributes"])
 
         return {
             "input_description": input_description,
             "input_attributes": search["input_attributes"],
             "statistical_anchor": round(anchor, 2) if anchor is not None else None,
+            "anchor_method": anchor_method,
             "pricing_matches_used": sorted(pricing_ranks),
             "predicted_unit_price": prediction["predicted_unit_price"],
             "currency": prediction["currency"],

@@ -87,6 +87,62 @@ def dense_band(matches) -> tuple | None:
     return None
 
 
+def size_interpolated_anchor(matches, input_attrs) -> float | None:
+    """Interpolate the rate along the size ladder of comparable items.
+
+    An estimator prices a 500mm bin BETWEEN the 385mm comp and the 1015mm
+    comp — never by anchoring on the biggest match and scaling up. Uses
+    same-material comps when the input's material is known and at least
+    two of them state sizes; falls back to all comps, then to None.
+    """
+    in_proxy = input_attrs.get("size_proxy")
+    in_kind = input_attrs.get("size_proxy_kind")
+    if not in_proxy:
+        return None
+
+    def points(require_material: bool):
+        material = input_attrs.get("material")
+        pts = []
+        for m in matches:
+            rate = _effective_rate(m)
+            if not rate or not m.get("size_proxy"):
+                continue
+            if m.get("size_proxy_kind") != in_kind:
+                continue
+            if require_material and material and m.get("material") != material:
+                continue
+            pts.append((float(m["size_proxy"]), float(rate)))
+        return sorted(pts)
+
+    pts = points(require_material=True)
+    if len({x for x, _ in pts}) < 2:
+        pts = points(require_material=False)
+    if len({x for x, _ in pts}) < 2:
+        return None
+
+    lower = [p for p in pts if p[0] <= in_proxy]
+    upper = [p for p in pts if p[0] >= in_proxy]
+    if lower and upper:
+        x1, y1 = lower[-1]
+        x2, y2 = upper[0]
+        if x2 == x1:
+            return round((y1 + y2) / 2, 2)
+        return round(y1 + (in_proxy - x1) / (x2 - x1) * (y2 - y1), 2)
+    # Outside the ladder: scale the nearest edge comp sublinearly, capped.
+    x, y = pts[-1] if lower else pts[0]
+    factor = min(max((in_proxy / x) ** 0.8, 0.5), 1.6)
+    return round(y * factor, 2)
+
+
+def compute_anchor(matches, input_attrs) -> tuple:
+    """(anchor, method) — size interpolation when possible, else the
+    similarity-weighted median."""
+    anchor = size_interpolated_anchor(matches, input_attrs or {})
+    if anchor is not None:
+        return anchor, "size-interpolated across comparable items"
+    return weighted_median_rate(matches), "similarity-weighted median"
+
+
 def weighted_median_rate(matches) -> float | None:
     """Similarity-weighted median of the matches' scope-adjusted rates
     (deterministic)."""
@@ -137,15 +193,25 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
         if m["differences"]:
             lines.append("Price-relevant differences: " + "; ".join(m["differences"]))
     rates = [_effective_rate(m) for m in matches if _effective_rate(m)]
-    anchor = weighted_median_rate(matches)
+    anchor, anchor_method = compute_anchor(matches, input_attrs)
     if rates and anchor is not None:
+        sized = sorted((m for m in matches
+                        if m.get("size_proxy") and _effective_rate(m)),
+                       key=lambda m: m["size_proxy"])
+        if len(sized) >= 2:
+            table = "; ".join(
+                f"{m['size_proxy']:g}mm -> {_effective_rate(m):,.2f}"
+                for m in sized)
+            lines += ["", f"SIZE/RATE LADDER of these matches (scope-adjusted): {table}",
+                      f"The input item's size on this ladder: "
+                      f"{input_attrs.get('size_proxy'):g}mm"
+                      if input_attrs.get("size_proxy") else ""]
         lines += [
             "",
-            f"CLOSEST MATCH RATE (highest similarity, Match 1, scope-adjusted): "
-            f"{_effective_rate(matches[0]):,.2f} {config.DEFAULT_CURRENCY} - anchor "
-            "primarily on this item; use the others as corroboration.",
-            f"STATISTICAL ANCHOR (similarity-weighted median of these matches): "
-            f"{anchor:,.2f} {config.DEFAULT_CURRENCY}",
+            f"STATISTICAL ANCHOR ({anchor_method}): "
+            f"{anchor:,.2f} {config.DEFAULT_CURRENCY} - start here. Do NOT "
+            "anchor on the largest or most expensive match; interpolate "
+            "along the size ladder.",
             f"HISTORICAL RATE RANGE of these matches: {min(rates):,.2f} to "
             f"{max(rates):,.2f} {config.DEFAULT_CURRENCY}",
             "Start from the anchor and apply quantified adjustments for the "
@@ -197,8 +263,10 @@ def _parse_json_response(content: str) -> dict:
     }
 
 
-def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
-    """Similarity-weighted median-style estimate when DeepSeek is unavailable."""
+def fallback_prediction(matches, weak_matches: bool, reason: str,
+                        input_attrs: dict | None = None) -> dict:
+    """Deterministic estimate when DeepSeek is unavailable: size-interpolated
+    anchor when sizes are stated, else similarity-weighted median."""
     priced = [m for m in matches if _effective_rate(m)]
     if not priced:
         return {
@@ -213,9 +281,9 @@ def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
             "fallback_used": True,
         }
     rates = [_effective_rate(m) for m in priced]
-    # Similarity-weighted median: deterministic and robust to outliers, and
-    # identical no matter how many matches the user chose to display.
-    estimate = round(weighted_median_rate(priced), 2)
+    # Deterministic and identical no matter how many matches are displayed.
+    anchor, anchor_method = compute_anchor(priced, input_attrs or {})
+    estimate = round(anchor, 2)
     units = [m["unit"] for m in priced if m["unit"]]
     return {
         "predicted_unit_price": estimate,
@@ -223,10 +291,9 @@ def fallback_prediction(matches, weak_matches: bool, reason: str) -> dict:
         "unit": units[0] if units else "unknown",
         "confidence": "Low" if weak_matches else "Medium",
         "reasoning": (
-            f"Statistical fallback: similarity-weighted median of the "
-            f"{len(priced)} strongest historical rates, scope-adjusted to "
-            f"the input's work scope ({min(rates):,.2f} to {max(rates):,.2f}). "
-            f"{reason}"
+            f"Statistical fallback ({anchor_method}) over the {len(priced)} "
+            f"strongest historical rates, scope-adjusted to the input's "
+            f"work scope ({min(rates):,.2f} to {max(rates):,.2f}). {reason}"
         ),
         "price_basis": f"Top {len(priced)} historical matches (statistical, no LLM).",
         "adjustments": [],
@@ -245,6 +312,7 @@ def predict_price_with_deepseek(description: str, input_attrs: dict,
             matches, weak_matches,
             "DEEPSEEK_API_KEY is not set. Set it in your environment to enable "
             "AI price estimation (see README).",
+            input_attrs,
         )
 
     payload = {
@@ -270,16 +338,19 @@ def predict_price_with_deepseek(description: str, input_attrs: dict,
     except requests.exceptions.RequestException as exc:
         logger.warning("DeepSeek API request failed: %s", type(exc).__name__)
         return fallback_prediction(matches, weak_matches,
-                                   f"DeepSeek API request failed ({type(exc).__name__}).")
+                                   f"DeepSeek API request failed ({type(exc).__name__}).",
+                                   input_attrs)
     except (KeyError, IndexError, ValueError):
         return fallback_prediction(matches, weak_matches,
-                                   "DeepSeek API returned an unexpected response shape.")
+                                   "DeepSeek API returned an unexpected response shape.",
+                                   input_attrs)
 
     try:
         result = _parse_json_response(content)
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return fallback_prediction(matches, weak_matches,
-                                   "DeepSeek returned invalid JSON.")
+                                   "DeepSeek returned invalid JSON.",
+                                   input_attrs)
     result["fallback_used"] = False
 
     # Clamp the LLM's price to the pricing set's historical range so a

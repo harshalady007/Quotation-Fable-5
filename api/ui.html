@@ -193,7 +193,7 @@ function render(d) {
   $("reasoning").textContent = d.reasoning || "No reasoning returned.";
   $("anchor").innerHTML = d.statistical_anchor != null
     ? `<p><strong>Statistical anchor:</strong> ${fmt(d.statistical_anchor)} ${esc(d.currency)}
-       (similarity-weighted median of the ${ (d.pricing_matches_used || []).length }
+       (${esc(d.anchor_method || "from")} the ${ (d.pricing_matches_used || []).length }
        strongest matches — the price is always computed from these,
        regardless of how many matches you display)</p>` : "";
   $("basis").innerHTML = d.price_basis

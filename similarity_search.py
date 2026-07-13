@@ -111,6 +111,10 @@ class SimilaritySearcher:
             results.append({
                 "item_type": item_type,
                 "scope": self.item_attrs[idx].get("scope"),
+                "material": self.item_attrs[idx].get("material"),
+                "max_size_mm": self.item_attrs[idx].get("max_size_mm"),
+                "size_proxy": self.item_attrs[idx].get("size_proxy"),
+                "size_proxy_kind": self.item_attrs[idx].get("size_proxy_kind"),
                 "description": row["full_description"],
                 "clean_description": row["clean_text"],
                 "unit": row.get("unit") if pd.notna(row.get("unit")) else None,
