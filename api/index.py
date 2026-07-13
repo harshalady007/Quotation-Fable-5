@@ -26,6 +26,10 @@ from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
 from family_readiness import dataset_fingerprint, load_readiness_snapshot
 from production_pricing import APPROVED_AUTO_FAMILIES, PRICING_ENGINE_VERSION
+from quotation_workflow.domain import WORKFLOW_VERSION
+from quotation_workflow.readiness import (compact_workflow_readiness,
+                                           workflow_readiness as
+                                           build_workflow_readiness)
 from similarity_search import SearchError
 
 app = FastAPI(
@@ -110,9 +114,15 @@ def api_info():
     return {
         "service": "Quotation Pricing Bot API",
         "pricing_version": PRICING_ENGINE_VERSION,
-        "endpoints": {"POST /predict": "price or request manual review",
-                      "GET /health": "dataset and quality-gate status",
-                      "GET /readiness": "V3 family and context shadow scorecard"},
+        "workflow_version": WORKFLOW_VERSION,
+        "endpoints": {
+            "POST /predict": "price or request manual review",
+            "GET /health": "dataset and quality-gate status",
+            "GET /readiness": "V3 family and context shadow scorecard",
+            "GET /workflow/readiness": (
+                "V4 workflow capability and safety status"
+            ),
+        },
         "docs": "/docs",
     }
 
@@ -147,7 +157,14 @@ def health():
             engine.context_readiness
         ),
         "context_model_evaluation": context_models,
+        "quotation_workflow": compact_workflow_readiness(),
     }
+
+
+@app.get("/workflow/readiness")
+def workflow_readiness():
+    """Return V4 capabilities/blockers without enabling workflow writes."""
+    return build_workflow_readiness()
 
 
 @app.get("/readiness")

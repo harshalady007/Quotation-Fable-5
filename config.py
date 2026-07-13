@@ -36,6 +36,12 @@ CONTEXT_MODEL_READINESS_PATH = os.environ.get(
     str(PROJECT_ROOT / "data" / "context_model_readiness.json"),
 )
 
+# V4 workflow persistence is intentionally local-only.  The deployed
+# serverless API never creates a SQLite database automatically: Vercel's local
+# filesystem is ephemeral and therefore cannot be treated as quotation/audit
+# storage.  The deployed endpoint reports capabilities but exposes no writes.
+WORKFLOW_DB_PATH = os.environ.get("QUOTATION_WORKFLOW_DB_PATH", "").strip()
+
 # DeepSeek API settings. The key MUST come from the environment.
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")

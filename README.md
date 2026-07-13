@@ -1,4 +1,4 @@
-# Quotation Pricing Bot — V3 Context Shadow Modeling
+# Quotation Pricing Bot — V4 Workflow Foundation
 
 A guarded quotation-pricing assistant built from historical Excel data. The
 system extracts product attributes, retrieves comparable quotation items and
@@ -38,6 +38,14 @@ and every other context model use only strictly earlier training evidence. The
 evaluator persists metrics, not fitted models, and cannot change a
 request-time price.
 
+V4.1 starts the complete quotation workflow without weakening the V3 pricing
+controls. It adds transactional users, projects, quotations, immutable
+revisions, four-eyes approvals, exact decimal totals, optimistic concurrency,
+payload-bound idempotency and a tamper-evident audit chain. The workflow core
+uses SQLite for explicit local development only. No workflow mutation route
+is exposed, and the Vercel filesystem is never treated as
+durable quotation storage.
+
 ## Current production scope
 
 Automatic pricing is currently **paused for every family**. The earlier
@@ -57,6 +65,12 @@ finds only one qualifying cohort overall; the evidence gate requires at least
 three. All 24 family/context model candidates are therefore blocked by data.
 The safe result is a recorded field plus an explanatory warning, not an
 invented multiplier.
+
+The V4 workflow is currently at the **foundation** stage. The deployed API may
+report its capabilities through `GET /workflow/readiness`, but workflow writes
+are intentionally local-only. Cloud authentication, project membership and a
+serverless workflow database are out of scope. PDF/Excel document generation
+and the local estimator workspace follow in later V4 work.
 
 Run the evaluation yourself; the result is derived from the repository data,
 not hardcoded:
@@ -81,6 +95,10 @@ python scripts/evaluate_context_models.py --enforce-production --check-snapshot
 10. The final price is a robust similarity-weighted median.
 11. V3 context effects require minimum coverage, independent quotation groups,
     multiple matched product cohorts and explicit production approval.
+12. V4 submitted quotation revisions are immutable and use decimal money.
+13. The creator/submitter cannot approve their own quotation revision.
+14. Every mutation requires an expected version and payload-bound idempotency
+    key, and is appended to a hash-chained audit log in the same transaction.
 
 Quarantined rows remain visible to estimators but cannot set an automatic
 price.
@@ -97,6 +115,11 @@ price.
 ├── context_readiness.py          # V3 context evidence and activation gates
 ├── context_enrichment.py         # Audited context export/import workflow
 ├── context_modeling.py           # Group/time-held-out shadow evaluation
+├── quotation_workflow/
+│   ├── domain.py                 # V4 validation, money and audit primitives
+│   ├── store.py                  # Transactional SQLite workflow repository
+│   ├── readiness.py              # Safe capability/blocker reporting
+│   └── schema.sql                # V4 schema version 1
 ├── data_quality.py               # Quarantine rules and health summary
 ├── data_corrections.py           # Approved estimator correction overlay
 ├── pricing_dataset.py            # One load/clean/correct/quality pipeline
@@ -112,6 +135,7 @@ price.
 ├── scripts/export_context_review.py
 ├── scripts/import_context_reviews.py
 ├── scripts/evaluate_context_models.py
+├── scripts/init_workflow_db.py   # Explicit local V4 store bootstrap
 ├── data/pricing_corrections.json # Versioned estimator decisions
 ├── data/family_readiness.json    # Audited readiness snapshot
 ├── data/context_model_readiness.json
@@ -159,6 +183,26 @@ The default dataset is `data/quotation_items.xlsx`. Override it with:
 ```bash
 export QUOTATION_DATA_PATH=/path/to/quotation_items.xlsx
 ```
+
+### Local V4 workflow store
+
+Initialize a local database explicitly; there is intentionally no default
+runtime database:
+
+```bash
+python scripts/init_workflow_db.py \
+  --database runtime/quotation-workflow.db \
+  --bootstrap-email admin@example.com \
+  --bootstrap-name "Workflow Admin" \
+  --request-id bootstrap-admin-v4-001
+export QUOTATION_WORKFLOW_DB_PATH=runtime/quotation-workflow.db
+```
+
+The initializer is idempotent when the same request ID and payload are used.
+Database, WAL and shared-memory files are ignored by Git because they contain
+commercial quotation state and user identities. SQLite is suitable for local
+workflow development and tests; do not point the Vercel deployment at a local
+SQLite path.
 
 ## API
 
@@ -220,6 +264,44 @@ failures, required fields, known subtypes and per-family contextual-evidence
 profiles plus the offline context-model scorecard. `snapshot_current` and
 `context_model_snapshot_current` become false if the dataset/corrections
 changed without regenerating the corresponding audited snapshots.
+
+`GET /workflow/readiness` returns the V4.1 workflow version, implemented
+transaction guarantees, configured-store integrity status and local-only
+deployment constraints. It is read-only. V4.1 deliberately exposes no
+create/edit/submit/approve HTTP endpoints; those commands are used only by
+local workflow tools against an explicitly configured SQLite store.
+
+## V4 quotation workflow
+
+The workflow state machine is deliberately small and auditable:
+
+- `draft` revisions may have their line-item set replaced by their owner or an
+  administrator;
+- `submitted` revisions are locked and await an independent approver;
+- an approver may mark the revision `approved` or `rejected`, but never their
+  own revision;
+- an approved or rejected quotation may create a new draft revision by
+  copying the prior immutable item snapshot.
+
+Every command carries `expected_version` to prevent lost updates and a
+`request_id` bound to the normalized command payload. Retrying the same
+request returns its original result; reusing the key for different data is a
+conflict. Line totals and subtotals use fixed-scale `Decimal` values. Audit
+events are chained by SHA-256 and written in the same transaction as the
+business change; `verify_integrity()` checks SQLite, foreign keys, current
+state alignment, line totals, revision digests and the complete audit chain.
+
+Remaining V4 delivery:
+
+1. **V4.1 (current):** workflow domain, SQLite repository, revisions,
+   approvals, concurrency, idempotency, audit verification and read-only
+   readiness.
+2. **Local workspace:** estimator quotation editor, approval controls and
+   revision comparison using the local SQLite store.
+3. **Documents:** approved PDF rendering, Excel import/export, attachments and
+   source-page evidence.
+4. **Hardening:** local backup/restore, retention and release
+   hardening before V5 monitoring/continuous ingestion begins.
 
 ## Estimator correction workflow
 
@@ -312,8 +394,10 @@ python scripts/evaluate_context_models.py --enforce-production --check-snapshot 
 
 Unit tests cover cleaning, attribute extraction, explicit-context overrides,
 quarantine rules, deterministic comparable pricing, refusal behavior,
-family-scoped activation safety, quotation-balanced metrics and leakage-safe
-rolling context-model evaluation.
+family-scoped activation safety, quotation-balanced metrics, leakage-safe
+rolling context-model evaluation, transactional quotation lifecycle,
+four-eyes approval, immutable revisions, decimal totals, idempotency,
+optimistic concurrency and audit tamper detection.
 
 The evaluation is grouped by quotation ID: when an item is tested, every row
 from the quotation and all of its PDF revisions are removed from the
