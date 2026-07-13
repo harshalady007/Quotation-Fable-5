@@ -8,7 +8,10 @@ import streamlit as st
 
 import config
 from cleaner import EmptyDatasetError
+from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
+from family_readiness import load_readiness_snapshot
+from production_pricing import APPROVED_AUTO_FAMILIES, family_contract
 from similarity_search import SearchError
 
 st.set_page_config(page_title="Quotation Pricing Bot", page_icon="💰", layout="wide")
@@ -18,6 +21,12 @@ st.caption(
     "historical quotation items, compares pricing attributes like an "
     "estimator, and predicts a unit price."
 )
+if not APPROVED_AUTO_FAMILIES:
+    st.warning(
+        "Automatic pricing is paused because no family currently passes the "
+        "quotation-lineage validation gate. Comparables remain available for "
+        "manual estimator review."
+    )
 
 
 @st.cache_resource(show_spinner="Loading and indexing the quotation dataset...")
@@ -28,7 +37,7 @@ def load_engine():
 
 try:
     engine = load_engine()
-except (DataLoadError, EmptyDatasetError) as exc:
+except (DataLoadError, EmptyDatasetError, DataCorrectionError) as exc:
     st.error(f"Could not load the dataset: {exc}")
     st.info(
         "Check that the Excel file exists and set QUOTATION_DATA_PATH if it "
@@ -64,15 +73,42 @@ scope = f3.selectbox("Commercial scope *", ["", "supply only",
                                               "supply and delivery",
                                               "supply and install"])
 civil = f4.selectbox("Civil works", ["", "excluded", "included"])
+contract = family_contract(family) if family else None
+subtype = st.selectbox(
+    "Product subtype",
+    [""] + list((contract or {}).get("known_subtypes", [])),
+)
+try:
+    readiness = load_readiness_snapshot()
+    readiness_item = next(
+        (item for item in readiness.get("families", []) if item["family"] == family),
+        None,
+    )
+except ValueError:
+    readiness_item = None
+if readiness_item:
+    if readiness_item["status"] == "production":
+        st.success(
+            f"{family} is production approved: "
+            f"{readiness_item['within_20']:.1%} within ±20% over "
+            f"{readiness_item['priced_holdouts']} held-out cases."
+        )
+    else:
+        st.info(
+            f"{family} remains in V2 shadow/manual review. "
+            + "; ".join(readiness_item.get("release_gate_failures", []))
+        )
 f5, f6, f7, f8 = st.columns(4)
 material = f5.text_input("Primary material *")
 quantity = f6.number_input("Quantity", min_value=0.0, value=0.0)
 capacity_l = f7.number_input("Capacity (litres)", min_value=0.0, value=0.0)
-diameter_mm = f8.number_input("Diameter (mm)", min_value=0.0, value=0.0)
-f9, f10, f11 = st.columns(3)
-length_mm = f9.number_input("Length (mm)", min_value=0.0, value=0.0)
-width_mm = f10.number_input("Width (mm)", min_value=0.0, value=0.0)
-height_mm = f11.number_input("Height (mm)", min_value=0.0, value=0.0)
+compartments = f8.number_input("Compartments / streams", min_value=0, value=0)
+f9, f10, f11, f12 = st.columns(4)
+mobility = f9.selectbox("Fixing / mobility", ["", "fixed", "movable", "removable"])
+diameter_mm = f10.number_input("Diameter (mm)", min_value=0.0, value=0.0)
+length_mm = f11.number_input("Length (mm)", min_value=0.0, value=0.0)
+width_mm = f12.number_input("Width (mm)", min_value=0.0, value=0.0)
+height_mm = st.number_input("Height (mm)", min_value=0.0, value=0.0)
 
 if st.button("Predict price", type="primary"):
     if not description.strip():
@@ -81,9 +117,11 @@ if st.button("Predict price", type="primary"):
     try:
         with st.spinner("Searching history and estimating price..."):
             context = {
-                "product_family": family, "unit": unit, "scope": scope,
+                "product_family": family, "subtype": subtype,
+                "unit": unit, "scope": scope,
                 "civil_works": civil, "material": material,
                 "quantity": quantity or None, "capacity_l": capacity_l or None,
+                "compartments": compartments or None, "mobility": mobility,
                 "diameter_mm": diameter_mm or None, "length_mm": length_mm or None,
                 "width_mm": width_mm or None, "height_mm": height_mm or None,
             }

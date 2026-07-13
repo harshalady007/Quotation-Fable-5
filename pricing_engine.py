@@ -4,10 +4,10 @@ import logging
 from functools import lru_cache
 
 import config
-from cleaner import clean_dataset
-from data_quality import annotate_data_quality, quality_summary
-from data_loader import load_dataset
-from production_pricing import price_from_comparables
+from data_corrections import correction_summary
+from data_quality import quality_summary
+from pricing_dataset import load_pricing_dataset
+from production_pricing import PRICING_ENGINE_VERSION, price_from_comparables
 from similarity_search import SimilaritySearcher
 
 logger = logging.getLogger(__name__)
@@ -57,13 +57,11 @@ def select_pricing_matches(matches: list, input_type: str | None = None,
 class PricingEngine:
     def __init__(self, data_path: str | None = None):
         self.data_path = data_path or config.DATA_PATH
-        raw = load_dataset(self.data_path)          # raises DataLoadError
-        self.dataset = annotate_data_quality(
-            clean_dataset(raw)                      # raises EmptyDatasetError
-        )
+        self.dataset = load_pricing_dataset(self.data_path)
         self.data_quality = quality_summary(self.dataset)
-        self.column_mapping = raw.attrs.get("column_mapping", {})
-        self.sheet = raw.attrs.get("sheet", "")
+        self.data_quality["corrections"] = correction_summary(self.dataset)
+        self.column_mapping = self.dataset.attrs.get("column_mapping", {})
+        self.sheet = self.dataset.attrs.get("sheet", "")
         self.searcher = SimilaritySearcher(self.dataset)
         logger.info("PricingEngine ready: %d usable rows from sheet %r",
                     len(self.dataset), self.sheet)
@@ -124,6 +122,7 @@ class PricingEngine:
             )
 
         return {
+            "pricing_version": PRICING_ENGINE_VERSION,
             "status": decision["status"],
             "input_description": input_description,
             "input_attributes": search["input_attributes"],
@@ -140,7 +139,10 @@ class PricingEngine:
             "price_basis": decision["pricing_method"],
             "adjustments": [],
             "fallback_used": False,
-            "price_source": "Production comparable engine",
+            "price_source": (
+                "Production comparable engine" if decision["status"] == "priced"
+                else "Historical comparable evidence (manual review)"
+            ),
             "review_reasons": decision["review_reasons"],
             "matches": matches,
             "weak_matches": search["weak_matches"],

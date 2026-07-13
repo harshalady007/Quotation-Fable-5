@@ -47,6 +47,81 @@ def test_unicode_multiplication_sign_dimensions():
     assert attrs["max_size_mm"] == 1500.0
 
 
+@pytest.mark.parametrize(("description", "expected"), [
+    ("Bench Size: L1800 xW 530 xH 530 mm",
+     {"length_mm": 1800.0, "width_mm": 530.0, "height_mm": 530.0}),
+    ("Bench SIZE: 1753 L x 533 W x 787mm H",
+     {"length_mm": 1753.0, "width_mm": 533.0, "height_mm": 787.0}),
+    ("Bench Size: 2640LX 720WX 550 H",
+     {"length_mm": 2640.0, "width_mm": 720.0, "height_mm": 550.0}),
+    ("Bench Size: 2 x 0.5 x 0.45m",
+     {"length_mm": 2000.0, "width_mm": 500.0, "height_mm": 450.0}),
+    ("Custom curvilinear bench Size:16,675mm (L)X "
+     "500/1000mm (W)X 450mm (H)",
+     {"length_mm": 16675.0, "width_mm": 1000.0, "height_mm": 450.0}),
+])
+def test_dimension_chain_accepts_real_schedule_formats(description, expected):
+    attrs = extract_attributes(normalize_text(description))
+    for field, value in expected.items():
+        assert attrs[field] == value
+
+
+def test_bench_diameter_and_single_overall_size_are_effective_lengths():
+    circular = extract_attributes(normalize_text(
+        "Precast bench Size: 500Dia x 450H mm"
+    ))
+    assert circular["diameter_mm"] == 500.0
+    assert circular["height_mm"] == 450.0
+    assert circular["length_mm"] == 500.0
+
+    single = extract_attributes(normalize_text(
+        "Heavy Duty Bench solid oak with armrest. Size 2000 mm"
+    ))
+    assert single["length_mm"] == 2000.0
+
+    width_height_only = extract_attributes(normalize_text(
+        "Precast concrete seater Size: 500 mm wide x 450 mm high"
+    ))
+    assert width_height_only["width_mm"] == 500.0
+    assert width_height_only["height_mm"] == 450.0
+    assert width_height_only["length_mm"] is None
+
+
+def test_material_aliases_use_commercial_substrate_groups():
+    iroko = extract_attributes(normalize_text("Bench made of Iroko wooden slats"))
+    gi = extract_attributes(normalize_text("Bench made from 1.5mm thick hot GI"))
+    assert iroko["material"] == "wood"
+    assert gi["material"] == "steel"
+
+    hybrid = extract_attributes(normalize_text(
+        "Precast concrete bench with Iroko wooden slats"
+    ))
+    assert "wood accent" in hybrid["features"]
+
+
+def test_overall_size_outranks_earlier_component_profile():
+    attrs = extract_attributes(normalize_text(
+        "Bench made of wooden slats and legs of 40x50mm. "
+        "Size: L 2200 x W 800 x H 1040mm"
+    ))
+    assert attrs["length_mm"] == 2200.0
+    assert attrs["width_mm"] == 800.0
+    assert attrs["height_mm"] == 1040.0
+
+    earlier_length = extract_attributes(normalize_text(
+        "Bench with wooden slats of 600mm long x 600mm wide. "
+        "Size: L 1800 x W 600 x H 450mm"
+    ))
+    assert earlier_length["length_mm"] == 1800.0
+
+
+def test_curvilinear_bench_is_shaped_subtype():
+    attrs = extract_attributes(normalize_text(
+        "Custom Curvilinear Bench Size: 16600mm (L) x 1000mm (W) x 450mm (H)"
+    ))
+    assert attrs["subtype"] == "shaped bench"
+
+
 def test_normalize_text_preserves_specs():
     s = normalize_text("Supply & Install 50 mm DIA. S.S-316 handrail,\nBrushed finish")
     assert "50mm" in s
@@ -147,6 +222,40 @@ def test_item_type_extraction():
     assert extract_attributes(normalize_text("stainless steel plate"))["item_type"] is None
     # 'sign' must not fire inside words like 'design'.
     assert extract_attributes(normalize_text("designed bracket"))["item_type"] is None
+
+
+def test_v2_family_subtypes_are_conservative():
+    bench = extract_attributes(normalize_text(
+        "Precast bench without backrest L1800 x W500 x H450mm"
+    ))
+    assert bench["subtype"] == "backless bench"
+    assert "integrated seating" not in bench["features"]
+    assert "backrest" not in bench["features"]
+
+    planter = extract_attributes(normalize_text(
+        "Mild steel planter box with seater L3000 x W800 x H700mm"
+    ))
+    assert planter["subtype"] == "integrated seating"
+    assert "integrated seating" in planter["features"]
+
+    recycle = extract_attributes(normalize_text(
+        "Triple recycle bin, 3 stream, mild steel"
+    ))
+    assert recycle["compartments"] == 3
+    assert recycle["subtype"] == "multi-stream bin"
+
+    bollard = extract_attributes(normalize_text(
+        "Removable stainless steel bollard 150mm dia x 900mm high"
+    ))
+    assert bollard["subtype"] == "removable bollard"
+    assert bollard["mobility"] == "removable"
+
+    shaped = extract_attributes(normalize_text(
+        "L-Shape Precast Bench Size: L 7000+1120 x 600 x 450mm high"
+    ))
+    assert shaped["subtype"] == "shaped bench"
+    assert shaped["length_mm"] == 8120.0
+    assert shaped["max_size_mm"] == 8120.0
 
 
 def test_same_item_type_beats_same_material():

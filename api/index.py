@@ -18,14 +18,17 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from cleaner import EmptyDatasetError
+from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
+from family_readiness import dataset_fingerprint, load_readiness_snapshot
+from production_pricing import APPROVED_AUTO_FAMILIES, PRICING_ENGINE_VERSION
 from similarity_search import SearchError
 
 app = FastAPI(
     title="Quotation Pricing Bot API",
     description="Guarded comparable pricing from validated historical "
                 "quotation evidence, with manual-review abstention.",
-    version="2.0.0",
+    version=PRICING_ENGINE_VERSION,
 )
 
 _engine = None
@@ -39,7 +42,7 @@ def get_engine():
         try:
             from pricing_engine import PricingEngine
             _engine = PricingEngine()
-        except (DataLoadError, EmptyDatasetError) as exc:
+        except (DataLoadError, EmptyDatasetError, DataCorrectionError) as exc:
             _engine_error = str(exc)
     if _engine is None:
         raise HTTPException(status_code=503, detail=f"Dataset unavailable: {_engine_error}")
@@ -51,24 +54,28 @@ class PredictRequest(BaseModel):
                              description="Item or service description to price")
     top_k: int = Field(5, ge=1, le=15, description="Number of similar items to use")
     product_family: str | None = Field(None, max_length=100)
+    subtype: str | None = Field(None, max_length=100)
     unit: str | None = Field(None, max_length=30)
     scope: str | None = Field(None, max_length=100)
     material: str | None = Field(None, max_length=100)
     civil_works: bool | str | None = None
     quantity: float | None = Field(None, gt=0)
     capacity_l: float | None = Field(None, gt=0)
+    compartments: int | None = Field(None, gt=0, le=20)
     length_mm: float | None = Field(None, gt=0)
     width_mm: float | None = Field(None, gt=0)
     height_mm: float | None = Field(None, gt=0)
     diameter_mm: float | None = Field(None, gt=0)
     thickness_mm: float | None = Field(None, gt=0)
+    mobility: str | None = Field(None, max_length=30)
     features: list[str] | None = None
 
     def pricing_context(self) -> dict:
         fields = (
-            "product_family", "unit", "scope", "material", "civil_works",
-            "quantity", "capacity_l", "length_mm", "width_mm", "height_mm",
-            "diameter_mm", "thickness_mm", "features",
+            "product_family", "subtype", "unit", "scope", "material",
+            "civil_works", "quantity", "capacity_l", "compartments",
+            "length_mm", "width_mm", "height_mm", "diameter_mm",
+            "thickness_mm", "mobility", "features",
         )
         return {name: getattr(self, name) for name in fields
                 if getattr(self, name) not in (None, "", [])}
@@ -93,8 +100,10 @@ def root():
 def api_info():
     return {
         "service": "Quotation Pricing Bot API",
+        "pricing_version": PRICING_ENGINE_VERSION,
         "endpoints": {"POST /predict": "price or request manual review",
-                      "GET /health": "dataset and quality-gate status"},
+                      "GET /health": "dataset and quality-gate status",
+                      "GET /readiness": "V2 family shadow scorecard"},
         "docs": "/docs",
     }
 
@@ -106,8 +115,29 @@ def health():
         "status": "ok",
         "dataset_rows": len(engine.dataset),
         "sheet": engine.sheet,
-        "pricing_mode": "guarded deterministic comparables",
+        "pricing_mode": (
+            "guarded deterministic comparables"
+            if APPROVED_AUTO_FAMILIES else "manual review only"
+        ),
+        "approved_auto_families": sorted(APPROVED_AUTO_FAMILIES),
+        "pricing_version": PRICING_ENGINE_VERSION,
         "data_quality": engine.data_quality,
+    }
+
+
+@app.get("/readiness")
+def readiness():
+    """Return the audited V2 snapshot; never changes the production allow-list."""
+    engine = get_engine()
+    try:
+        snapshot = load_readiness_snapshot()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    current = dataset_fingerprint(engine.dataset)
+    return {
+        **snapshot,
+        "snapshot_current": snapshot.get("dataset_fingerprint") == current,
+        "current_dataset_fingerprint": current,
     }
 
 

@@ -59,6 +59,11 @@
     background: color-mix(in srgb, var(--bad) 12%, transparent);
     border: 1px solid var(--bad); border-radius: 8px; padding: 10px 12px; margin-top: 12px;
   }
+  .info-box {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+    border-radius: 8px; padding: 10px 12px; margin-top: 12px; font-size: .9rem;
+  }
   h2 { font-size: 1.05rem; margin: 20px 0 8px; }
   .tablewrap { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: .88rem; }
@@ -92,6 +97,9 @@
         <option value="">Select…</option><option>planter</option><option>litter bin</option>
         <option>recycle bin</option><option>bench</option><option>bollard</option><option>bike rack</option>
       </select></div>
+      <div class="field"><label for="subtype">Product subtype</label><select id="subtype">
+        <option value="">Not specified</option>
+      </select></div>
       <div class="field"><label for="unit">Unit *</label><select id="unit">
         <option value="">Select…</option><option value="no">No.</option><option value="m">Metre</option>
         <option value="m2">m²</option><option value="set">Set</option>
@@ -108,6 +116,10 @@
       <div class="field"><label for="material">Primary material *</label><input id="material" placeholder="e.g. HDPE, mild steel"></div>
       <div class="field"><label for="quantity">Quantity</label><input id="quantity" type="number" min="0" step="any"></div>
       <div class="field"><label for="capacity">Capacity (litres)</label><input id="capacity" type="number" min="0" step="any"></div>
+      <div class="field"><label for="compartments">Compartments / streams</label><input id="compartments" type="number" min="1" max="20" step="1"></div>
+      <div class="field"><label for="mobility">Fixing / mobility</label><select id="mobility">
+        <option value="">Not specified</option><option>fixed</option><option>movable</option><option>removable</option>
+      </select></div>
       <div class="field"><label for="length">Length (mm)</label><input id="length" type="number" min="0" step="any"></div>
       <div class="field"><label for="width">Width (mm)</label><input id="width" type="number" min="0" step="any"></div>
       <div class="field"><label for="height">Height (mm)</label><input id="height" type="number" min="0" step="any"></div>
@@ -122,6 +134,7 @@
       <button id="go">Predict price</button>
       <span id="status" class="spinner"></span>
     </div>
+    <div id="family-readiness" class="info-box">Loading V2 family readiness…</div>
     <div id="error" class="err-box hidden"></div>
   </div>
 
@@ -169,6 +182,56 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt = n => n == null ? "n/a" :
   Number(n).toLocaleString(undefined, {maximumFractionDigits: 2});
+let readinessFamilies = {};
+let automaticPricingEnabled = false;
+
+async function loadReadiness() {
+  try {
+    const response = await fetch("/readiness");
+    if (!response.ok) throw new Error("readiness endpoint unavailable");
+    const data = await response.json();
+    readinessFamilies = Object.fromEntries((data.families || []).map(item => [item.family, item]));
+    automaticPricingEnabled = (data.approved_auto_families || []).length > 0;
+    renderFamilyReadiness();
+  } catch (error) {
+    $("family-readiness").textContent = "V2 readiness could not be loaded; production approval gates remain enforced.";
+  }
+}
+
+function renderFamilyReadiness() {
+  const family = $("family").value;
+  const item = readinessFamilies[family];
+  const subtype = $("subtype");
+  const selectedSubtype = subtype.value;
+  const known = item?.contract?.known_subtypes || [];
+  subtype.innerHTML = '<option value="">Not specified</option>' +
+    known.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
+  if (known.includes(selectedSubtype)) subtype.value = selectedSubtype;
+
+  if (!family) {
+    $("family-readiness").textContent = automaticPricingEnabled
+      ? "V2 shadow evaluation is active. Select a family to see its production readiness."
+      : "Automatic pricing is safely paused: no family currently passes the quotation-lineage release gate.";
+    return;
+  }
+  if (!item) {
+    $("family-readiness").textContent = "This family has no readiness snapshot and cannot price automatically.";
+    return;
+  }
+  if (item.status === "production") {
+    $("family-readiness").textContent =
+      `${family}: production approved — ${(100 * item.within_20).toFixed(1)}% within ±20% across ${item.priced_holdouts} quotation-lineage-held-out cases.`;
+  } else {
+    const failures = (item.release_gate_failures || []).join("; ");
+    $("family-readiness").textContent =
+      `${family}: V2 shadow/manual review — ${item.priced_holdouts} priced holdouts, ` +
+      `${item.within_20 == null ? "no accuracy result" : (100 * item.within_20).toFixed(1) + "% within ±20%"}. ` +
+      `Not production approved: ${failures}.`;
+  }
+}
+
+$("family").addEventListener("change", renderFamilyReadiness);
+loadReadiness();
 
 $("go").addEventListener("click", predict);
 $("desc").addEventListener("keydown", e => {
@@ -209,12 +272,14 @@ function buildPayload(description) {
     description,
     top_k: Number($("topk").value),
     product_family: $("family").value || null,
+    subtype: $("subtype").value || null,
     unit: $("unit").value || null,
     scope: $("scope").value || null,
     civil_works: $("civil").value || null,
     material: $("material").value.trim() || null,
+    mobility: $("mobility").value || null,
   };
-  const numeric = {quantity:"quantity", capacity:"capacity_l", length:"length_mm",
+  const numeric = {quantity:"quantity", capacity:"capacity_l", compartments:"compartments", length:"length_mm",
                    width:"width_mm", height:"height_mm", diameter:"diameter_mm"};
   for (const [id, key] of Object.entries(numeric)) {
     if ($(id).value) payload[key] = Number($(id).value);

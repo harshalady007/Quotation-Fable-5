@@ -19,6 +19,8 @@ CONFLICT_RATE_RATIO = 2.0
 BLOCKING_FLAGS = {
     "missing_unit",
     "conflicting_duplicate_rate",
+    "manual_pricing_exclusion",
+    "superseded_revision",
 }
 
 
@@ -39,6 +41,24 @@ def annotate_data_quality(df: pd.DataFrame) -> pd.DataFrame:
             flags[int(i)].append("missing_source")
         if not str(row.get("date") or "").strip():
             flags[int(i)].append("missing_date")
+        if bool(row.get("manual_pricing_exclusion", False)):
+            flags[int(i)].append("manual_pricing_exclusion")
+
+    # When a quotation has R1/R2/... files, only its highest available
+    # revision may contribute rates.  Older versions remain searchable and
+    # auditable, but are unsafe pricing evidence.
+    if {"source_group", "source_revision"}.issubset(out.columns):
+        for source_group, group in out.groupby("source_group", dropna=False):
+            if not source_group or group["source"].nunique(dropna=True) < 2:
+                continue
+            revisions = pd.to_numeric(
+                group["source_revision"], errors="coerce"
+            ).fillna(0)
+            latest = int(revisions.max())
+            if latest <= 0:
+                continue
+            for i in group.index[revisions < latest]:
+                flags[int(i)].append("superseded_revision")
 
     grouped = out.groupby(["clean_text", "unit_norm"], dropna=False)
     for _, group in grouped:

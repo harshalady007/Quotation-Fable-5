@@ -20,3 +20,5 @@ jobs:
         run: python -m pytest -q
       - name: Grouped source-holdout pricing gate
         run: python scripts/evaluate_production.py --enforce-gate
+      - name: V2 all-family shadow gates and snapshot
+        run: python scripts/evaluate_families.py --enforce-production --check-snapshot --quiet

@@ -1,5 +1,6 @@
 """Clean the loaded dataset and normalize description text."""
 
+import hashlib
 import re
 
 import pandas as pd
@@ -55,6 +56,17 @@ _NORMALIZE_PATTERNS = [
 _JUNK_CHARS = re.compile(r"[^\w\s\.\,\/\-\*\(\)%x\"°²³&+:]")
 _MULTI_SPACE = re.compile(r"\s+")
 
+# PDF revisions are not independent quotations.  ``...-R2.pdf`` and
+# ``...-R3.pdf`` belong to one source lineage and must be held out together
+# during validation.  The revision number also lets the quality gate prevent
+# superseded prices from entering the production comparable set.
+_SOURCE_REVISION_RE = re.compile(
+    r"(?i)(?:^|[-_\s])r(?:ev(?:ision)?)?\s*[-_ ]*(\d+)[a-z]?"
+)
+_QUOTATION_ID_RE = re.compile(
+    r"(?i)\b(bs)[-_](qt)[-_](\d+)[-_](\d+)[-_](\d+)(?=$|[^0-9])"
+)
+
 # Boilerplate copied from source quotations is useful for traceability but is
 # not product evidence.  Leaving it in TF-IDF makes records match because they
 # share a company name or a quotation total rather than because the products
@@ -78,6 +90,23 @@ def normalize_unit(unit) -> str:
         return ""
     key = str(unit).strip().lower()
     return UNIT_MAP.get(key, key)
+
+
+def source_lineage(source) -> tuple[str, int]:
+    """Return canonical quotation family and numeric PDF revision."""
+    if source is None or (isinstance(source, float) and pd.isna(source)):
+        return "", 0
+    value = str(source).strip().replace("\\", "/").rsplit("/", 1)[-1]
+    stem = re.sub(r"(?i)\.pdf\s*$", "", value).strip()
+    revision_match = _SOURCE_REVISION_RE.search(stem)
+    revision = int(revision_match.group(1)) if revision_match else 0
+    quote_match = _QUOTATION_ID_RE.search(stem)
+    if quote_match:
+        family = "-".join(part.lower() for part in quote_match.groups())
+    else:
+        family = stem[:revision_match.start()].strip() if revision_match else stem
+    family = re.sub(r"\s+", " ", family).strip().lower()
+    return family, revision
 
 
 def normalize_text(text) -> str:
@@ -109,6 +138,31 @@ def normalize_search_text(text) -> str:
     for pattern in _SEARCH_NOISE_PATTERNS:
         s = pattern.sub(" ", s)
     return normalize_text(s)
+
+
+def stable_record_id(row) -> str:
+    """Return a stable correction key for a raw quotation line.
+
+    Unit is deliberately excluded because fixing a missing/wrong unit is one
+    of the main correction use cases.  The original source, normalized
+    description and original rate together distinguish conflicting quotes.
+    """
+    source = str(row.get("source") or "").strip().lower()
+    clean_text = str(row.get("clean_text") or "").strip()
+    try:
+        rate = format(float(row.get("rate")), ".12g")
+    except (TypeError, ValueError):
+        rate = str(row.get("rate") or "").strip()
+    payload = "\x1f".join((source, clean_text, rate)).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:20]
+
+
+def compose_search_text(row) -> str:
+    """Build searchable evidence after any reviewed field corrections."""
+    parts = [str(row.get("clean_text") or "")]
+    for field in ("category", "section", "location", "remarks"):
+        parts.append(normalize_search_text(row.get(field)))
+    return " ".join(part for part in parts if part).strip()
 
 
 def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
@@ -144,17 +198,22 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df["rate"] > 0]
 
     df["unit_norm"] = df["unit"].map(normalize_unit)
+    df["record_id"] = df.apply(stable_record_id, axis=1)
+    lineage = df["source"].map(source_lineage)
+    df["source_group"] = lineage.map(lambda value: value[0])
+    df["source_revision"] = lineage.map(lambda value: value[1])
 
     # Searchable text combines every useful text field.
-    extra = []
-    for field in ("category", "section", "location", "remarks"):
-        extra.append(df[field].map(normalize_search_text))
-    df["search_text"] = df["clean_text"]
-    for col in extra:
-        df["search_text"] = (df["search_text"] + " " + col.fillna("")).str.strip()
+    df["search_text"] = df.apply(compose_search_text, axis=1)
 
-    # Duplicates: same cleaned text, unit and rate -> keep first.
-    df = df.drop_duplicates(subset=["clean_text", "unit_norm", "rate"], keep="first")
+    # Remove repeats within one PDF only.  The same item/rate appearing in a
+    # different quotation is independent commercial evidence and must not be
+    # silently deleted (the old cross-source de-duplication removed 70 valid
+    # rows from the current workbook).
+    df = df.drop_duplicates(
+        subset=["source_group", "source_revision", "clean_text", "unit_norm", "rate"],
+        keep="first",
+    )
     df = df.reset_index(drop=True)
 
     if df.empty:

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Grouped source-holdout evaluation for the production pricing gate.
+"""Grouped quotation-lineage holdout evaluation for the production gate.
 
-Each target is priced after removing every comparable from the target's source
-quotation. This prevents near-duplicate items in one quotation from leaking
-into both the evidence and evaluation sides.
+Each target is priced after removing every comparable from the target's full
+quotation family, including R1/R2 PDF revisions. This prevents revised or
+near-duplicate prices from leaking into both evidence and evaluation.
 """
 
 from __future__ import annotations
@@ -19,9 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import config
-from cleaner import clean_dataset
-from data_loader import load_dataset
-from data_quality import annotate_data_quality
+from pricing_dataset import load_pricing_dataset
 from production_pricing import (APPROVED_AUTO_FAMILIES,
                                 FAMILY_REQUIRED_FIELDS,
                                 price_from_comparables)
@@ -42,7 +40,7 @@ def _context_for(row, attrs: dict) -> dict:
 
 
 def evaluate(data_path: str) -> dict:
-    dataset = annotate_data_quality(clean_dataset(load_dataset(data_path)))
+    dataset = load_pricing_dataset(data_path)
     searcher = SimilaritySearcher(dataset)
     eligible_targets = 0
     decisions = []
@@ -67,9 +65,10 @@ def evaluate(data_path: str) -> dict:
             top_k=5,
             pricing_context=_context_for(row, attrs),
         )
-        # Group holdout: remove the entire source quotation, not only the row.
+        # Group holdout: remove the entire quotation lineage, including all
+        # PDF revisions, not only the exact source filename or target row.
         candidates = [m for m in search["candidate_matches"]
-                      if m.get("source") != row.get("source")]
+                      if m.get("source_group") != row.get("source_group")]
         decision = price_from_comparables(search["input_attributes"], candidates)
         if decision["status"] != "priced":
             for reason in decision["review_reasons"]:
@@ -81,6 +80,7 @@ def evaluate(data_path: str) -> dict:
         ratio = predicted / actual
         decisions.append({
             "family": family,
+            "source_group": row.get("source_group"),
             "actual": actual,
             "predicted": predicted,
             "ape": abs(ratio - 1.0),
@@ -93,6 +93,8 @@ def evaluate(data_path: str) -> dict:
         "dataset_rows": int(len(dataset)),
         "eligible_targets": int(eligible_targets),
         "automatic_cases": auto_cases,
+        "automatic_quote_groups": int(results["source_group"].nunique())
+        if auto_cases else 0,
         "automatic_coverage": round(auto_cases / eligible_targets, 4)
         if eligible_targets else 0.0,
         "approved_families": sorted(APPROVED_AUTO_FAMILIES),
@@ -123,12 +125,21 @@ def evaluate(data_path: str) -> dict:
                         "median_ape": None, "p90_ape": None,
                         "outside_factor_2": None, "per_family": {}})
 
+    # An empty allow-list is an intentional fail-safe operating mode. CI
+    # should pass when automatic pricing is disabled, while still rejecting
+    # any enabled family that lacks independent validation evidence.
     metrics["gate_passed"] = bool(
-        metrics["automatic_cases"] >= config.PRODUCTION_GATE_MIN_CASES
-        and metrics["within_20"] >= config.PRODUCTION_GATE_WITHIN_20
+        not APPROVED_AUTO_FAMILIES
+        or (
+            metrics["automatic_cases"] >= config.PRODUCTION_GATE_MIN_CASES
+            and metrics["automatic_quote_groups"] >= config.V2_GATE_MIN_QUOTE_GROUPS
+            and metrics["within_20"] >= config.PRODUCTION_GATE_WITHIN_20
+        )
     )
+    metrics["automatic_pricing_enabled"] = bool(APPROVED_AUTO_FAMILIES)
     metrics["gate"] = {
         "minimum_cases": config.PRODUCTION_GATE_MIN_CASES,
+        "minimum_quote_groups": config.V2_GATE_MIN_QUOTE_GROUPS,
         "minimum_within_20": config.PRODUCTION_GATE_WITHIN_20,
     }
     return metrics

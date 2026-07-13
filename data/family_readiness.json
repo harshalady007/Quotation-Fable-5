@@ -1,0 +1,443 @@
+{
+  "schema_version": 2,
+  "pricing_version": "2.1.0-shadow",
+  "dataset_fingerprint": "3d7862150d11297d2f70",
+  "dataset_rows": 772,
+  "approved_auto_families": [],
+  "gate": {
+    "minimum_priced_holdouts": 25,
+    "minimum_priced_quote_groups": 5,
+    "minimum_automatic_coverage": 0.35,
+    "minimum_within_20": 0.8,
+    "maximum_median_ape": 0.15,
+    "maximum_p90_ape": 0.4,
+    "maximum_factor2_errors": 0
+  },
+  "families": [
+    {
+      "family": "bench",
+      "status": "shadow",
+      "approved_for_automatic_pricing": false,
+      "rows": 113,
+      "quality_eligible_rows": 93,
+      "complete_targets": 90,
+      "independent_sources": 41,
+      "independent_quote_groups": 41,
+      "priced_holdouts": 8,
+      "priced_quote_groups": 3,
+      "automatic_coverage": 0.0889,
+      "within_20": 0.375,
+      "within_50": 1.0,
+      "median_ape": 0.2827,
+      "p90_ape": 0.3706,
+      "factor2_errors": 0,
+      "missing_fields": {
+        "length_mm": 2,
+        "material": 1,
+        "civil_works": 1
+      },
+      "top_refusals": [
+        {
+          "reason": "Fewer than 3 validated bench comparables share the 'wood accent' feature.",
+          "count": 17
+        },
+        {
+          "reason": "Only 0 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 15
+        },
+        {
+          "reason": "Fewer than 3 validated 'shaped bench' subtype comparables exist on the same unit and scope basis.",
+          "count": 15
+        },
+        {
+          "reason": "Fewer than 3 validated 'precast' comparables exist on the same unit and scope basis.",
+          "count": 14
+        },
+        {
+          "reason": "Fewer than 3 validated 'sculptural bench' subtype comparables exist on the same unit and scope basis.",
+          "count": 10
+        }
+      ],
+      "contract": {
+        "family": "bench",
+        "automatic_pricing": false,
+        "required_fields": [
+          "length_mm"
+        ],
+        "recommended_fields": [
+          "subtype",
+          "width_mm",
+          "height_mm",
+          "features"
+        ],
+        "known_subtypes": [
+          "backless bench",
+          "bench with backrest",
+          "tree bench",
+          "sculptural bench",
+          "shaped bench",
+          "linear bench"
+        ]
+      },
+      "release_gate_passed": false,
+      "release_gate_failures": [
+        "needs at least 25 priced holdouts",
+        "needs at least 5 independent priced quotation groups",
+        "coverage below 35%",
+        "within \u00b120% below 80%",
+        "median APE above 15%"
+      ]
+    },
+    {
+      "family": "bike rack",
+      "status": "shadow",
+      "approved_for_automatic_pricing": false,
+      "rows": 60,
+      "quality_eligible_rows": 54,
+      "complete_targets": 46,
+      "independent_sources": 33,
+      "independent_quote_groups": 33,
+      "priced_holdouts": 5,
+      "priced_quote_groups": 5,
+      "automatic_coverage": 0.1087,
+      "within_20": 0.0,
+      "within_50": 0.2,
+      "median_ape": 0.5563,
+      "p90_ape": 0.9586,
+      "factor2_errors": 3,
+      "missing_fields": {
+        "length_mm": 7,
+        "material": 2
+      },
+      "top_refusals": [
+        {
+          "reason": "Fewer than 3 validated 'mild steel' comparables exist on the same unit and scope basis.",
+          "count": 8
+        },
+        {
+          "reason": "Comparable rates vary by 2.06x, above the safe 2.00x limit.",
+          "count": 6
+        },
+        {
+          "reason": "Only 1 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 5
+        },
+        {
+          "reason": "Fewer than 3 validated 'steel' comparables exist on the same unit and scope basis.",
+          "count": 4
+        },
+        {
+          "reason": "Fewer than 3 validated 'stainless steel' comparables exist on the same unit and scope basis.",
+          "count": 4
+        }
+      ],
+      "contract": {
+        "family": "bike rack",
+        "automatic_pricing": false,
+        "required_fields": [
+          "length_mm"
+        ],
+        "recommended_fields": [
+          "subtype",
+          "width_mm",
+          "height_mm"
+        ],
+        "known_subtypes": [
+          "hoop rack",
+          "multi-bike rack",
+          "wall-mounted rack"
+        ]
+      },
+      "release_gate_passed": false,
+      "release_gate_failures": [
+        "needs at least 25 priced holdouts",
+        "coverage below 35%",
+        "within \u00b120% below 80%",
+        "median APE above 15%",
+        "p90 APE above 40%",
+        "contains factor-of-two errors"
+      ]
+    },
+    {
+      "family": "bollard",
+      "status": "needs_data",
+      "approved_for_automatic_pricing": false,
+      "rows": 64,
+      "quality_eligible_rows": 57,
+      "complete_targets": 12,
+      "independent_sources": 11,
+      "independent_quote_groups": 11,
+      "priced_holdouts": 0,
+      "priced_quote_groups": 0,
+      "automatic_coverage": 0.0,
+      "within_20": null,
+      "within_50": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "factor2_errors": 0,
+      "missing_fields": {
+        "height_mm": 24,
+        "diameter_mm": 22,
+        "material": 12,
+        "scope": 3,
+        "civil_works": 3
+      },
+      "top_refusals": [
+        {
+          "reason": "Only 1 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 4
+        },
+        {
+          "reason": "Fewer than 3 validated 'stainless steel' comparables exist on the same unit and scope basis.",
+          "count": 3
+        },
+        {
+          "reason": "Fewer than 3 validated 'mild steel' comparables exist on the same unit and scope basis.",
+          "count": 2
+        },
+        {
+          "reason": "Only 0 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 2
+        },
+        {
+          "reason": "Only 2 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 2
+        }
+      ],
+      "contract": {
+        "family": "bollard",
+        "automatic_pricing": false,
+        "required_fields": [
+          "diameter_mm",
+          "height_mm"
+        ],
+        "recommended_fields": [
+          "subtype",
+          "mobility",
+          "thickness_mm"
+        ],
+        "known_subtypes": [
+          "fixed bollard",
+          "removable bollard",
+          "retractable bollard",
+          "flexible bollard"
+        ]
+      },
+      "release_gate_passed": false,
+      "release_gate_failures": [
+        "needs at least 25 priced holdouts",
+        "needs at least 5 independent priced quotation groups",
+        "coverage below 35%",
+        "within \u00b120% below 80%",
+        "median APE above 15%",
+        "p90 APE above 40%"
+      ]
+    },
+    {
+      "family": "litter bin",
+      "status": "needs_data",
+      "approved_for_automatic_pricing": false,
+      "rows": 111,
+      "quality_eligible_rows": 102,
+      "complete_targets": 24,
+      "independent_sources": 14,
+      "independent_quote_groups": 14,
+      "priced_holdouts": 3,
+      "priced_quote_groups": 2,
+      "automatic_coverage": 0.125,
+      "within_20": 0.6667,
+      "within_50": 0.6667,
+      "median_ape": 0.1282,
+      "p90_ape": 0.8175,
+      "factor2_errors": 0,
+      "missing_fields": {
+        "capacity_l": 81,
+        "material": 6,
+        "scope": 3,
+        "civil_works": 1
+      },
+      "top_refusals": [
+        {
+          "reason": "Fewer than 3 validated 'hdpe' comparables exist on the same unit and scope basis.",
+          "count": 11
+        },
+        {
+          "reason": "Only 0 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 9
+        },
+        {
+          "reason": "Only 1 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 6
+        },
+        {
+          "reason": "Best validated comparable score is 0.43; minimum is 0.45.",
+          "count": 2
+        },
+        {
+          "reason": "Fewer than 3 validated 'corten' comparables exist on the same unit and scope basis.",
+          "count": 2
+        }
+      ],
+      "contract": {
+        "family": "litter bin",
+        "automatic_pricing": false,
+        "required_fields": [
+          "capacity_l"
+        ],
+        "recommended_fields": [
+          "subtype",
+          "compartments",
+          "mobility"
+        ],
+        "known_subtypes": [
+          "pedal bin",
+          "multi-stream bin",
+          "wall-mounted bin",
+          "mobile bin"
+        ]
+      },
+      "release_gate_passed": false,
+      "release_gate_failures": [
+        "needs at least 25 priced holdouts",
+        "needs at least 5 independent priced quotation groups",
+        "coverage below 35%",
+        "within \u00b120% below 80%",
+        "p90 APE above 40%"
+      ]
+    },
+    {
+      "family": "planter",
+      "status": "shadow",
+      "approved_for_automatic_pricing": false,
+      "rows": 155,
+      "quality_eligible_rows": 105,
+      "complete_targets": 73,
+      "independent_sources": 8,
+      "independent_quote_groups": 8,
+      "priced_holdouts": 0,
+      "priced_quote_groups": 0,
+      "automatic_coverage": 0.0,
+      "within_20": null,
+      "within_50": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "factor2_errors": 0,
+      "missing_fields": {
+        "material": 26,
+        "length_mm": 24,
+        "width_mm": 23,
+        "height_mm": 16,
+        "unit": 12,
+        "scope": 1,
+        "civil_works": 1
+      },
+      "top_refusals": [
+        {
+          "reason": "Only 0 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 51
+        },
+        {
+          "reason": "Fewer than 3 validated 'grp' comparables exist on the same unit and scope basis.",
+          "count": 27
+        },
+        {
+          "reason": "Fewer than 3 validated 'standalone planter' subtype comparables exist on the same unit and scope basis.",
+          "count": 26
+        },
+        {
+          "reason": "Fewer than 3 validated 'precast' comparables exist on the same unit and scope basis.",
+          "count": 21
+        },
+        {
+          "reason": "Fewer than 3 validated 'mild steel' comparables exist on the same unit and scope basis.",
+          "count": 19
+        }
+      ],
+      "contract": {
+        "family": "planter",
+        "automatic_pricing": false,
+        "required_fields": [
+          "length_mm",
+          "width_mm",
+          "height_mm"
+        ],
+        "recommended_fields": [
+          "subtype",
+          "thickness_mm",
+          "features"
+        ],
+        "known_subtypes": [
+          "standalone planter",
+          "integrated seating"
+        ]
+      },
+      "release_gate_passed": false,
+      "release_gate_failures": [
+        "needs at least 25 priced holdouts",
+        "needs at least 5 independent priced quotation groups",
+        "coverage below 35%",
+        "within \u00b120% below 80%",
+        "median APE above 15%",
+        "p90 APE above 40%"
+      ]
+    },
+    {
+      "family": "recycle bin",
+      "status": "needs_data",
+      "approved_for_automatic_pricing": false,
+      "rows": 40,
+      "quality_eligible_rows": 36,
+      "complete_targets": 2,
+      "independent_sources": 2,
+      "independent_quote_groups": 2,
+      "priced_holdouts": 0,
+      "priced_quote_groups": 0,
+      "automatic_coverage": 0.0,
+      "within_20": null,
+      "within_50": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "factor2_errors": 0,
+      "missing_fields": {
+        "capacity_l": 36,
+        "material": 5
+      },
+      "top_refusals": [
+        {
+          "reason": "Only 0 validated same-family, same-unit, same-scope comparables remain; at least 3 are required.",
+          "count": 2
+        },
+        {
+          "reason": "Fewer than 3 validated 'stainless steel' comparables exist on the same unit and scope basis.",
+          "count": 1
+        }
+      ],
+      "contract": {
+        "family": "recycle bin",
+        "automatic_pricing": false,
+        "required_fields": [
+          "capacity_l"
+        ],
+        "recommended_fields": [
+          "subtype",
+          "compartments",
+          "mobility"
+        ],
+        "known_subtypes": [
+          "multi-stream bin",
+          "wall-mounted bin",
+          "mobile bin"
+        ]
+      },
+      "release_gate_passed": false,
+      "release_gate_failures": [
+        "needs at least 25 priced holdouts",
+        "needs at least 5 independent priced quotation groups",
+        "coverage below 35%",
+        "within \u00b120% below 80%",
+        "median APE above 15%",
+        "p90 APE above 40%"
+      ]
+    }
+  ]
+}

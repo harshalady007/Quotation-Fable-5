@@ -14,6 +14,7 @@ from cleaner import normalize_text, normalize_unit
 NUMERIC_FIELDS = {
     "quantity",
     "capacity_l",
+    "compartments",
     "length_mm",
     "width_mm",
     "height_mm",
@@ -46,6 +47,9 @@ def normalize_pricing_context(context: dict | None) -> dict:
         detected = extract_attributes(normalize_text(str(family))).get("item_type")
         out["item_type"] = detected or normalize_text(str(family))
 
+    if raw.get("subtype"):
+        out["subtype"] = normalize_text(str(raw["subtype"]))
+
     if raw.get("unit"):
         out["unit_hint"] = normalize_unit(raw["unit"])
 
@@ -56,6 +60,16 @@ def normalize_pricing_context(context: dict | None) -> dict:
     if raw.get("material"):
         material = extract_attributes(normalize_text(str(raw["material"]))).get("material")
         out["material"] = material or normalize_text(str(raw["material"]))
+
+    for field in ("finish", "grade"):
+        if raw.get(field):
+            out[field] = normalize_text(str(raw[field]))
+
+    if raw.get("mobility"):
+        mobility = normalize_text(str(raw["mobility"]))
+        if mobility not in {"fixed", "movable", "removable"}:
+            raise ValueError("mobility must be fixed, movable or removable.")
+        out["mobility"] = mobility
 
     civil = raw.get("civil_works")
     if civil is not None and civil != "":
@@ -73,6 +87,10 @@ def normalize_pricing_context(context: dict | None) -> dict:
     for field in NUMERIC_FIELDS:
         value = _positive_number(raw.get(field))
         if value is not None:
+            if field == "compartments" and not value.is_integer():
+                raise ValueError("compartments must be a positive whole number.")
+            if field == "compartments":
+                value = int(value)
             out[field] = value
 
     features = raw.get("features")

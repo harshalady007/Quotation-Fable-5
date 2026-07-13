@@ -1,4 +1,4 @@
-"""Deterministic, guarded comparable pricing for Production V1."""
+"""Deterministic guarded pricing with V2 shadow-family contracts."""
 
 from __future__ import annotations
 
@@ -17,10 +17,22 @@ SUPPORTED_INPUT_FAMILIES = {
     "recycle bin",
 }
 
-# Only families that have cleared grouped, source-held-out validation are
+# Only families that have cleared quotation-lineage-held-out validation are
 # allowed to return an automatic price. The others remain searchable pilots
 # and explicitly abstain until their subtype data is curated.
-APPROVED_AUTO_FAMILIES = {"planter"}
+APPROVED_AUTO_FAMILIES: set[str] = set()
+
+# Bump whenever extraction, eligibility or pricing logic changes.  The value
+# is included in the readiness fingerprint so the API cannot present an old
+# scorecard as current after a code-only model change.
+PRICING_ENGINE_VERSION = "2.1.0-shadow"
+
+BENCH_CRITICAL_FEATURES = {
+    "armrest",
+    "backrest",
+    "perforated",
+    "wood accent",
+}
 
 # Specifications that materially define price for each supported family.
 # They may be extracted from text or supplied explicitly by the user.
@@ -32,6 +44,55 @@ FAMILY_REQUIRED_FIELDS = {
     "bollard": ("diameter_mm", "height_mm"),
     "bike rack": ("length_mm",),
 }
+
+FAMILY_CONTRACTS = {
+    "planter": {
+        "required_fields": FAMILY_REQUIRED_FIELDS["planter"],
+        "recommended_fields": ("subtype", "thickness_mm", "features"),
+        "known_subtypes": ("standalone planter", "integrated seating"),
+    },
+    "bench": {
+        "required_fields": FAMILY_REQUIRED_FIELDS["bench"],
+        "recommended_fields": ("subtype", "width_mm", "height_mm", "features"),
+        "known_subtypes": ("backless bench", "bench with backrest", "tree bench",
+                           "sculptural bench", "shaped bench", "linear bench"),
+    },
+    "litter bin": {
+        "required_fields": FAMILY_REQUIRED_FIELDS["litter bin"],
+        "recommended_fields": ("subtype", "compartments", "mobility"),
+        "known_subtypes": ("pedal bin", "multi-stream bin", "wall-mounted bin",
+                           "mobile bin"),
+    },
+    "recycle bin": {
+        "required_fields": FAMILY_REQUIRED_FIELDS["recycle bin"],
+        "recommended_fields": ("subtype", "compartments", "mobility"),
+        "known_subtypes": ("multi-stream bin", "wall-mounted bin", "mobile bin"),
+    },
+    "bollard": {
+        "required_fields": FAMILY_REQUIRED_FIELDS["bollard"],
+        "recommended_fields": ("subtype", "mobility", "thickness_mm"),
+        "known_subtypes": ("fixed bollard", "removable bollard",
+                           "retractable bollard", "flexible bollard"),
+    },
+    "bike rack": {
+        "required_fields": FAMILY_REQUIRED_FIELDS["bike rack"],
+        "recommended_fields": ("subtype", "width_mm", "height_mm"),
+        "known_subtypes": ("hoop rack", "multi-bike rack", "wall-mounted rack"),
+    },
+}
+
+
+def family_contract(family: str) -> dict | None:
+    contract = FAMILY_CONTRACTS.get(family)
+    if not contract:
+        return None
+    return {
+        "family": family,
+        "automatic_pricing": family in APPROVED_AUTO_FAMILIES,
+        "required_fields": list(contract["required_fields"]),
+        "recommended_fields": list(contract["recommended_fields"]),
+        "known_subtypes": list(contract["known_subtypes"]),
+    }
 
 
 def _weighted_median(items: list[tuple[float, float]]) -> float:
@@ -87,22 +148,25 @@ def _manual_decision(reasons: list[str], comparables: list,
     }
 
 
-def price_from_comparables(input_attrs: dict, candidates: list[dict]) -> dict:
+def price_from_comparables(input_attrs: dict, candidates: list[dict],
+                           approved_families: set[str] | None = None) -> dict:
     """Return an automatic price only when production evidence gates pass."""
     reasons: list[str] = []
     family = input_attrs.get("item_type")
     unit = input_attrs.get("unit_hint")
     scope = input_attrs.get("scope")
 
+    active_families = (APPROVED_AUTO_FAMILIES if approved_families is None
+                       else set(approved_families))
     if not family:
         reasons.append("Product family is missing or was not recognized.")
     elif family not in SUPPORTED_INPUT_FAMILIES:
         reasons.append(
             f"Product family '{family}' is not yet approved for automatic pricing."
         )
-    elif family not in APPROVED_AUTO_FAMILIES:
+    elif family not in active_families:
         reasons.append(
-            f"Product family '{family}' has not yet passed the grouped "
+            f"Product family '{family}' has not yet passed the quotation-lineage "
             "holdout accuracy gate; comparables are shown for manual review."
         )
     if not unit:
@@ -137,6 +201,20 @@ def price_from_comparables(input_attrs: dict, candidates: list[dict]) -> dict:
         and m.get("rate")
     ]
 
+    subtype = input_attrs.get("subtype")
+    if subtype:
+        same_subtype = [
+            m for m in eligible
+            if (m.get("subtype") or (m.get("attributes") or {}).get("subtype")) == subtype
+        ]
+        if len(same_subtype) >= config.PRODUCTION_MIN_COMPARABLES:
+            eligible = same_subtype
+        else:
+            reasons.append(
+                f"Fewer than {config.PRODUCTION_MIN_COMPARABLES} validated "
+                f"'{subtype}' subtype comparables exist on the same unit and scope basis."
+            )
+
     civil = input_attrs.get("civil_works")
     if civil and scope == "supply and install":
         eligible = [
@@ -154,6 +232,27 @@ def price_from_comparables(input_attrs: dict, candidates: list[dict]) -> dict:
                 f"Fewer than {config.PRODUCTION_MIN_COMPARABLES} validated "
                 f"'{material}' comparables exist on the same unit and scope basis."
             )
+
+    # Bench add-ons are commercial scope, not decorative text.  A plain
+    # concrete seat must not be anchored to concrete-plus-timber benches, and
+    # a one-off perforated or armrest design must abstain when its own cohort
+    # is too sparse.
+    if family == "bench":
+        input_features = set(input_attrs.get("features") or [])
+        for feature in sorted(BENCH_CRITICAL_FEATURES):
+            matching = [
+                m for m in eligible
+                if (feature in set((m.get("attributes") or {}).get("features") or []))
+                == (feature in input_features)
+            ]
+            if (feature in input_features
+                    and len(matching) < config.PRODUCTION_MIN_COMPARABLES):
+                reasons.append(
+                    f"Fewer than {config.PRODUCTION_MIN_COMPARABLES} validated "
+                    f"bench comparables share the '{feature}' feature."
+                )
+            elif len(matching) >= config.PRODUCTION_MIN_COMPARABLES:
+                eligible = matching
 
     # Every automatic comparable must state the same family-critical numeric
     # fields and be within a 2x specification range of the input.
