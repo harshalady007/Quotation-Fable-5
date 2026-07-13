@@ -7,8 +7,11 @@ reading ``ITEM NO J`` as a per-item pricing basis.
 
 from __future__ import annotations
 
+import math
+
 from attribute_extractor import detect_scope, extract_attributes
 from cleaner import normalize_text, normalize_unit
+from context_readiness import normalize_quotation_date
 
 
 NUMERIC_FIELDS = {
@@ -30,7 +33,7 @@ def _positive_number(value):
         number = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Expected a number, received {value!r}.") from exc
-    if number <= 0:
+    if not math.isfinite(number) or number <= 0:
         raise ValueError("Pricing dimensions, capacity and quantity must be positive.")
     return number
 
@@ -61,9 +64,15 @@ def normalize_pricing_context(context: dict | None) -> dict:
         material = extract_attributes(normalize_text(str(raw["material"]))).get("material")
         out["material"] = material or normalize_text(str(raw["material"]))
 
-    for field in ("finish", "grade"):
+    for field in ("finish", "grade", "location", "supplier"):
         if raw.get(field):
             out[field] = normalize_text(str(raw[field]))
+
+    quotation_date = raw.get("quotation_date") or raw.get("date")
+    if quotation_date:
+        out["quotation_date"] = normalize_quotation_date(
+            quotation_date, strict=True
+        )
 
     if raw.get("mobility"):
         mobility = normalize_text(str(raw["mobility"]))

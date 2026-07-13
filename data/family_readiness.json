@@ -1,7 +1,7 @@
 {
-  "schema_version": 2,
-  "pricing_version": "2.1.0-shadow",
-  "dataset_fingerprint": "3d7862150d11297d2f70",
+  "schema_version": 3,
+  "pricing_version": "3.2.0-shadow",
+  "dataset_fingerprint": "2187b0b8bc5a2152add7",
   "dataset_rows": 772,
   "approved_auto_families": [],
   "gate": {
@@ -12,6 +12,759 @@
     "maximum_median_ape": 0.15,
     "maximum_p90_ape": 0.4,
     "maximum_factor2_errors": 0
+  },
+  "context_readiness": {
+    "schema_version": 1,
+    "mode": "shadow",
+    "approved_adjustments": [],
+    "implemented_adjustments": [],
+    "overall": {
+      "quantity": {
+        "field": "quantity",
+        "status": "needs_data",
+        "approved_for_price_adjustment": false,
+        "rows": 611,
+        "independent_quote_groups": 147,
+        "populated_rows": 0,
+        "populated_quote_groups": 0,
+        "coverage": 0.0,
+        "distinct_values": 0,
+        "blocking_reasons": [
+          "usable coverage 0.0% is below 35%",
+          "only 0 independent quotation groups contain the field; at least 12 are required",
+          "only 0 matched product cohorts vary this field; at least 3 are required",
+          "only 0 distinct positive quantities are available; at least 3 are required"
+        ],
+        "collection_targets": {
+          "additional_populated_rows_for_coverage": 214,
+          "additional_populated_quote_groups": 12,
+          "additional_matched_product_cohorts": 3,
+          "additional_distinct_values": 3
+        },
+        "matched_product_cohorts": 0,
+        "minimum_matched_product_cohorts": 3
+      },
+      "supplier": {
+        "field": "supplier",
+        "status": "needs_data",
+        "approved_for_price_adjustment": false,
+        "rows": 611,
+        "independent_quote_groups": 147,
+        "populated_rows": 0,
+        "populated_quote_groups": 0,
+        "coverage": 0.0,
+        "distinct_values": 0,
+        "blocking_reasons": [
+          "usable coverage 0.0% is below 35%",
+          "only 0 independent quotation groups contain the field; at least 12 are required",
+          "only 0 matched product cohorts vary this field; at least 3 are required",
+          "fewer than two values have enough independent quotation support"
+        ],
+        "collection_targets": {
+          "additional_populated_rows_for_coverage": 214,
+          "additional_populated_quote_groups": 12,
+          "additional_matched_product_cohorts": 3,
+          "additional_supported_levels": 2
+        },
+        "matched_product_cohorts": 0,
+        "minimum_matched_product_cohorts": 3,
+        "supported_levels": 0,
+        "minimum_groups_per_level": 4
+      },
+      "quotation_date": {
+        "field": "quotation_date",
+        "status": "needs_data",
+        "approved_for_price_adjustment": false,
+        "rows": 611,
+        "independent_quote_groups": 147,
+        "populated_rows": 611,
+        "populated_quote_groups": 147,
+        "coverage": 1.0,
+        "distinct_values": 60,
+        "blocking_reasons": [
+          "only 1 matched product cohorts vary this field; at least 3 are required"
+        ],
+        "collection_targets": {
+          "additional_populated_rows_for_coverage": 0,
+          "additional_populated_quote_groups": 0,
+          "additional_matched_product_cohorts": 2,
+          "additional_history_span_days": 0
+        },
+        "matched_product_cohorts": 1,
+        "minimum_matched_product_cohorts": 3,
+        "span_days": 325,
+        "minimum_span_days": 180,
+        "minimum_matched_cohort_span_days": 90
+      },
+      "location": {
+        "field": "location",
+        "status": "needs_data",
+        "approved_for_price_adjustment": false,
+        "rows": 611,
+        "independent_quote_groups": 147,
+        "populated_rows": 0,
+        "populated_quote_groups": 0,
+        "coverage": 0.0,
+        "distinct_values": 0,
+        "blocking_reasons": [
+          "usable coverage 0.0% is below 35%",
+          "only 0 independent quotation groups contain the field; at least 12 are required",
+          "only 0 matched product cohorts vary this field; at least 3 are required",
+          "fewer than two values have enough independent quotation support"
+        ],
+        "collection_targets": {
+          "additional_populated_rows_for_coverage": 214,
+          "additional_populated_quote_groups": 12,
+          "additional_matched_product_cohorts": 3,
+          "additional_supported_levels": 2
+        },
+        "matched_product_cohorts": 0,
+        "minimum_matched_product_cohorts": 3,
+        "supported_levels": 0,
+        "minimum_groups_per_level": 4
+      }
+    },
+    "families": {
+      "bench": {
+        "quantity": {
+          "field": "quantity",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 93,
+          "independent_quote_groups": 43,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "only 0 distinct positive quantities are available; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 33,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_distinct_values": 3
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3
+        },
+        "supplier": {
+          "field": "supplier",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 93,
+          "independent_quote_groups": 43,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 33,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        },
+        "quotation_date": {
+          "field": "quotation_date",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 93,
+          "independent_quote_groups": 43,
+          "populated_rows": 93,
+          "populated_quote_groups": 43,
+          "coverage": 1.0,
+          "distinct_values": 31,
+          "blocking_reasons": [
+            "only 0 matched product cohorts vary this field; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 0,
+            "additional_populated_quote_groups": 0,
+            "additional_matched_product_cohorts": 3,
+            "additional_history_span_days": 0
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "span_days": 324,
+          "minimum_span_days": 180,
+          "minimum_matched_cohort_span_days": 90
+        },
+        "location": {
+          "field": "location",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 93,
+          "independent_quote_groups": 43,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 33,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        }
+      },
+      "bike rack": {
+        "quantity": {
+          "field": "quantity",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 54,
+          "independent_quote_groups": 41,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "only 0 distinct positive quantities are available; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 19,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_distinct_values": 3
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3
+        },
+        "supplier": {
+          "field": "supplier",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 54,
+          "independent_quote_groups": 41,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 19,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        },
+        "quotation_date": {
+          "field": "quotation_date",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 54,
+          "independent_quote_groups": 41,
+          "populated_rows": 54,
+          "populated_quote_groups": 41,
+          "coverage": 1.0,
+          "distinct_values": 32,
+          "blocking_reasons": [
+            "only 1 matched product cohorts vary this field; at least 3 are required",
+            "history spans only 112 days; at least 180 days are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 0,
+            "additional_populated_quote_groups": 0,
+            "additional_matched_product_cohorts": 2,
+            "additional_history_span_days": 68
+          },
+          "matched_product_cohorts": 1,
+          "minimum_matched_product_cohorts": 3,
+          "span_days": 112,
+          "minimum_span_days": 180,
+          "minimum_matched_cohort_span_days": 90
+        },
+        "location": {
+          "field": "location",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 54,
+          "independent_quote_groups": 41,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 19,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        }
+      },
+      "bollard": {
+        "quantity": {
+          "field": "quantity",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 57,
+          "independent_quote_groups": 43,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "only 0 distinct positive quantities are available; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 20,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_distinct_values": 3
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3
+        },
+        "supplier": {
+          "field": "supplier",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 57,
+          "independent_quote_groups": 43,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 20,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        },
+        "quotation_date": {
+          "field": "quotation_date",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 57,
+          "independent_quote_groups": 43,
+          "populated_rows": 57,
+          "populated_quote_groups": 43,
+          "coverage": 1.0,
+          "distinct_values": 33,
+          "blocking_reasons": [
+            "only 0 matched product cohorts vary this field; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 0,
+            "additional_populated_quote_groups": 0,
+            "additional_matched_product_cohorts": 3,
+            "additional_history_span_days": 0
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "span_days": 182,
+          "minimum_span_days": 180,
+          "minimum_matched_cohort_span_days": 90
+        },
+        "location": {
+          "field": "location",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 57,
+          "independent_quote_groups": 43,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 20,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        }
+      },
+      "litter bin": {
+        "quantity": {
+          "field": "quantity",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 102,
+          "independent_quote_groups": 67,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "only 0 distinct positive quantities are available; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 36,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_distinct_values": 3
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3
+        },
+        "supplier": {
+          "field": "supplier",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 102,
+          "independent_quote_groups": 67,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 36,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        },
+        "quotation_date": {
+          "field": "quotation_date",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 102,
+          "independent_quote_groups": 67,
+          "populated_rows": 102,
+          "populated_quote_groups": 67,
+          "coverage": 1.0,
+          "distinct_values": 39,
+          "blocking_reasons": [
+            "only 0 matched product cohorts vary this field; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 0,
+            "additional_populated_quote_groups": 0,
+            "additional_matched_product_cohorts": 3,
+            "additional_history_span_days": 0
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "span_days": 325,
+          "minimum_span_days": 180,
+          "minimum_matched_cohort_span_days": 90
+        },
+        "location": {
+          "field": "location",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 102,
+          "independent_quote_groups": 67,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 36,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        }
+      },
+      "planter": {
+        "quantity": {
+          "field": "quantity",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 105,
+          "independent_quote_groups": 21,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "only 0 distinct positive quantities are available; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 37,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_distinct_values": 3
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3
+        },
+        "supplier": {
+          "field": "supplier",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 105,
+          "independent_quote_groups": 21,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 37,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        },
+        "quotation_date": {
+          "field": "quotation_date",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 105,
+          "independent_quote_groups": 21,
+          "populated_rows": 105,
+          "populated_quote_groups": 21,
+          "coverage": 1.0,
+          "distinct_values": 17,
+          "blocking_reasons": [
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "history spans only 85 days; at least 180 days are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 0,
+            "additional_populated_quote_groups": 0,
+            "additional_matched_product_cohorts": 3,
+            "additional_history_span_days": 95
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "span_days": 85,
+          "minimum_span_days": 180,
+          "minimum_matched_cohort_span_days": 90
+        },
+        "location": {
+          "field": "location",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 105,
+          "independent_quote_groups": 21,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 37,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        }
+      },
+      "recycle bin": {
+        "quantity": {
+          "field": "quantity",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 36,
+          "independent_quote_groups": 29,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "only 0 distinct positive quantities are available; at least 3 are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 13,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_distinct_values": 3
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3
+        },
+        "supplier": {
+          "field": "supplier",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 36,
+          "independent_quote_groups": 29,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 13,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        },
+        "quotation_date": {
+          "field": "quotation_date",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 36,
+          "independent_quote_groups": 29,
+          "populated_rows": 36,
+          "populated_quote_groups": 29,
+          "coverage": 1.0,
+          "distinct_values": 19,
+          "blocking_reasons": [
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "history spans only 103 days; at least 180 days are required"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 0,
+            "additional_populated_quote_groups": 0,
+            "additional_matched_product_cohorts": 3,
+            "additional_history_span_days": 77
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "span_days": 103,
+          "minimum_span_days": 180,
+          "minimum_matched_cohort_span_days": 90
+        },
+        "location": {
+          "field": "location",
+          "status": "needs_data",
+          "approved_for_price_adjustment": false,
+          "rows": 36,
+          "independent_quote_groups": 29,
+          "populated_rows": 0,
+          "populated_quote_groups": 0,
+          "coverage": 0.0,
+          "distinct_values": 0,
+          "blocking_reasons": [
+            "usable coverage 0.0% is below 35%",
+            "only 0 independent quotation groups contain the field; at least 12 are required",
+            "only 0 matched product cohorts vary this field; at least 3 are required",
+            "fewer than two values have enough independent quotation support"
+          ],
+          "collection_targets": {
+            "additional_populated_rows_for_coverage": 13,
+            "additional_populated_quote_groups": 12,
+            "additional_matched_product_cohorts": 3,
+            "additional_supported_levels": 2
+          },
+          "matched_product_cohorts": 0,
+          "minimum_matched_product_cohorts": 3,
+          "supported_levels": 0,
+          "minimum_groups_per_level": 4
+        }
+      }
+    }
   },
   "families": [
     {

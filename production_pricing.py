@@ -1,4 +1,4 @@
-"""Deterministic guarded pricing with V2 shadow-family contracts."""
+"""Deterministic guarded pricing with V3 shadow context contracts."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ APPROVED_AUTO_FAMILIES: set[str] = set()
 # Bump whenever extraction, eligibility or pricing logic changes.  The value
 # is included in the readiness fingerprint so the API cannot present an old
 # scorecard as current after a code-only model change.
-PRICING_ENGINE_VERSION = "2.1.0-shadow"
+PRICING_ENGINE_VERSION = "3.2.0-shadow"
 
 BENCH_CRITICAL_FEATURES = {
     "armrest",

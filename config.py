@@ -29,6 +29,13 @@ FAMILY_READINESS_PATH = os.environ.get(
     str(PROJECT_ROOT / "data" / "family_readiness.json"),
 )
 
+# Offline-only V3 context-model scorecard. The API reads this JSON snapshot;
+# it never loads a fitted model or applies an adjustment from this file.
+CONTEXT_MODEL_READINESS_PATH = os.environ.get(
+    "CONTEXT_MODEL_READINESS_PATH",
+    str(PROJECT_ROOT / "data" / "context_model_readiness.json"),
+)
+
 # DeepSeek API settings. The key MUST come from the environment.
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
@@ -98,6 +105,40 @@ V2_GATE_MAX_MEDIAN_APE = 0.15
 V2_GATE_MAX_P90_APE = 0.40
 V2_GATE_MAX_FACTOR2_ERRORS = 0
 V2_GATE_MIN_QUOTE_GROUPS = 5
+
+# V3 contextual-adjustment evidence gates.  Passing these thresholds means a
+# quantity/supplier/date/location field is safe to model, not that it may be
+# used in production.  Activation additionally requires lineage-held-out
+# calibration and an explicit allow-list change.
+V3_CONTEXT_MIN_COVERAGE = 0.35
+V3_CONTEXT_MIN_QUOTE_GROUPS = 12
+V3_CONTEXT_MIN_DISTINCT_VALUES = 3
+V3_CONTEXT_MIN_GROUPS_PER_LEVEL = 4
+V3_CONTEXT_MIN_MATCHED_COHORTS = 3
+V3_DATE_MIN_SPAN_DAYS = 180
+V3_DATE_MIN_COHORT_SPAN_DAYS = 90
+
+# V3 context-model shadow gates. These apply after the data-readiness gates.
+# A candidate must beat an exact-product cohort-median baseline under complete
+# quotation-lineage holdout and strictly earlier-data-only rolling folds.
+V3_MODEL_MIN_CASES = 25
+V3_MODEL_MIN_EVAL_QUOTE_GROUPS = 8
+V3_MODEL_MIN_TRAIN_QUOTE_GROUPS = 8
+V3_MODEL_MIN_TRAIN_GROUPS_PER_COHORT = 3
+V3_MODEL_MIN_COHORTS = 3
+V3_MODEL_MIN_TRAIN_HISTORY_DAYS = 180
+V3_MODEL_MIN_COVERAGE = 0.35
+V3_MODEL_MIN_WITHIN_20 = 0.80
+V3_MODEL_MAX_MEDIAN_APE = 0.15
+V3_MODEL_MAX_P90_APE = 0.40
+V3_MODEL_MAX_FACTOR2_ERRORS = 0
+V3_MODEL_MIN_MEDIAN_APE_IMPROVEMENT = 0.02
+V3_MODEL_MIN_IMPROVED_CASE_SHARE = 0.55
+V3_MODEL_FACTOR_MIN = 0.67
+V3_MODEL_FACTOR_MAX = 1.50
+V3_MODEL_MAX_CLAMP_SHARE = 0.10
+V3_MODEL_MAX_FORECAST_HORIZON_DAYS = 180
+V3_MODEL_RIDGE_ALPHA = 1.0
 
 # The predicted price is clamped to this factor of the pricing set's
 # historical rate range. Wide enough to allow justified spec adjustments

@@ -16,6 +16,7 @@ def load_pricing_dataset(data_path: str | None = None,
     metadata = {
         "column_mapping": raw.attrs.get("column_mapping", {}),
         "sheet": raw.attrs.get("sheet", ""),
+        "summary_context": raw.attrs.get("summary_context", {}),
     }
     dataset = clean_dataset(raw)
     dataset = apply_data_corrections(

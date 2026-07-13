@@ -8,6 +8,9 @@ import streamlit as st
 
 import config
 from cleaner import EmptyDatasetError
+from context_modeling import (ContextModelEvaluationError,
+                              load_context_model_snapshot)
+from context_readiness import ContextReadinessError
 from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
 from family_readiness import load_readiness_snapshot
@@ -37,7 +40,8 @@ def load_engine():
 
 try:
     engine = load_engine()
-except (DataLoadError, EmptyDatasetError, DataCorrectionError) as exc:
+except (DataLoadError, EmptyDatasetError, DataCorrectionError,
+        ContextReadinessError) as exc:
     st.error(f"Could not load the dataset: {exc}")
     st.info(
         "Check that the Excel file exists and set QUOTATION_DATA_PATH if it "
@@ -55,6 +59,12 @@ with st.sidebar:
     st.write(f"**Usable rows:** {len(engine.dataset)}")
     st.write(f"**Pricing eligible:** {engine.data_quality['pricing_eligible_rows']}")
     st.caption("Unsafe or incomplete records remain visible but are quarantined from pricing.")
+    st.divider()
+    st.subheader("V3 context adjustments")
+    approved_context = engine.context_readiness.get("approved_adjustments", [])
+    st.write("**Approved:** " + (", ".join(approved_context) or "none"))
+    for field, evidence in engine.context_readiness.get("overall", {}).items():
+        st.caption(f"{field}: {evidence['status']} ({evidence['coverage']:.0%} coverage)")
 
 description = st.text_area(
     "Item / service description",
@@ -95,9 +105,31 @@ if readiness_item:
         )
     else:
         st.info(
-            f"{family} remains in V2 shadow/manual review. "
+            f"{family} remains in V3 shadow/manual review. "
             + "; ".join(readiness_item.get("release_gate_failures", []))
         )
+if family:
+    try:
+        model_snapshot = load_context_model_snapshot()
+        family_models = [
+            item for item in model_snapshot.get("adjustments", [])
+            if item.get("family") == family
+        ]
+        ready_models = [
+            item["field"] for item in family_models
+            if item.get("status") == "ready_for_approval"
+        ]
+        blocked_models = sum(
+            item.get("status") not in {"ready_for_approval", "production"}
+            for item in family_models
+        )
+        st.caption(
+            "Offline context models ready for approval: "
+            f"{', '.join(ready_models) if ready_models else 'none'}; "
+            f"{blocked_models} blocked by evidence."
+        )
+    except ContextModelEvaluationError:
+        st.caption("Offline context-model readiness snapshot is unavailable.")
 f5, f6, f7, f8 = st.columns(4)
 material = f5.text_input("Primary material *")
 quantity = f6.number_input("Quantity", min_value=0.0, value=0.0)
@@ -109,6 +141,10 @@ diameter_mm = f10.number_input("Diameter (mm)", min_value=0.0, value=0.0)
 length_mm = f11.number_input("Length (mm)", min_value=0.0, value=0.0)
 width_mm = f12.number_input("Width (mm)", min_value=0.0, value=0.0)
 height_mm = st.number_input("Height (mm)", min_value=0.0, value=0.0)
+f13, f14, f15 = st.columns(3)
+supplier = f13.text_input("Supplier", help="Recorded for V3 evidence; not yet a price adjustment.")
+location = f14.text_input("Project location")
+quotation_date = f15.date_input("Quotation date", value=None)
 
 if st.button("Predict price", type="primary"):
     if not description.strip():
@@ -120,6 +156,8 @@ if st.button("Predict price", type="primary"):
                 "product_family": family, "subtype": subtype,
                 "unit": unit, "scope": scope,
                 "civil_works": civil, "material": material,
+                "supplier": supplier, "location": location,
+                "quotation_date": quotation_date.isoformat() if quotation_date else None,
                 "quantity": quantity or None, "capacity_l": capacity_l or None,
                 "compartments": compartments or None, "mobility": mobility,
                 "diameter_mm": diameter_mm or None, "length_mm": length_mm or None,

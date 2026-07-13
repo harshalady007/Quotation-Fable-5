@@ -1,4 +1,4 @@
-"""Quotation-lineage-held-out V2 readiness for every supported family."""
+"""Quotation-lineage-held-out V3 readiness for every supported family."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 import config
+from context_readiness import build_context_readiness
 from pricing_dataset import load_pricing_dataset
 from production_pricing import (APPROVED_AUTO_FAMILIES, FAMILY_REQUIRED_FIELDS,
                                 PRICING_ENGINE_VERSION,
@@ -18,7 +19,7 @@ from production_pricing import (APPROVED_AUTO_FAMILIES, FAMILY_REQUIRED_FIELDS,
 from similarity_search import SimilaritySearcher
 
 
-READINESS_SCHEMA_VERSION = 2
+READINESS_SCHEMA_VERSION = 3
 
 
 def dataset_fingerprint(dataset: pd.DataFrame) -> str:
@@ -34,6 +35,10 @@ def dataset_fingerprint(dataset: pd.DataFrame) -> str:
             format(float(row.get("rate")), ".12g"),
             "1" if bool(row.get("pricing_eligible", True)) else "0",
             str(row.get("category") or ""),
+            str(row.get("quantity") or ""),
+            str(row.get("supplier") or ""),
+            str(row.get("quotation_date") or ""),
+            str(row.get("location") or ""),
             str(row.get("search_text") or ""),
             json.dumps(row.get("attribute_overrides") or {}, sort_keys=True),
         )))
@@ -51,11 +56,22 @@ def _context_for(row, attrs: dict) -> dict:
         "civil_works": attrs.get("civil_works"),
         "mobility": attrs.get("mobility"),
         "compartments": attrs.get("compartments"),
+        "quantity": row.get("quantity"),
+        "supplier": row.get("supplier"),
+        "quotation_date": row.get("quotation_date"),
+        "location": row.get("location"),
     }
     for field in FAMILY_REQUIRED_FIELDS.get(attrs.get("item_type"), ()):
         context[field] = attrs.get(field)
-    return {key: value for key, value in context.items()
-            if value not in (None, "", [])}
+    def present(value) -> bool:
+        if value in (None, "", []):
+            return False
+        try:
+            return not bool(pd.isna(value))
+        except (TypeError, ValueError):
+            return True
+
+    return {key: value for key, value in context.items() if present(value)}
 
 
 def missing_target_fields(row, attrs: dict) -> list[str]:
@@ -76,7 +92,7 @@ def missing_target_fields(row, attrs: dict) -> list[str]:
 
 
 def release_gate(metrics: dict) -> tuple[bool, list[str]]:
-    """Evaluate the non-negotiable V2 family release thresholds."""
+    """Evaluate the non-negotiable family release thresholds."""
     failures = []
     if metrics.get("priced_holdouts", 0) < config.PRODUCTION_GATE_MIN_CASES:
         failures.append(
@@ -116,6 +132,7 @@ def evaluate_family_readiness(data_path: str | None = None,
     """Evaluate families with the target quotation and revisions held out."""
     dataset = load_pricing_dataset(data_path, corrections_path)
     searcher = SimilaritySearcher(dataset)
+    context_readiness = build_context_readiness(dataset, searcher.item_attrs)
     families = sorted(SUPPORTED_INPUT_FAMILIES)
     stats = {
         family: {
@@ -244,6 +261,7 @@ def evaluate_family_readiness(data_path: str | None = None,
             "maximum_p90_ape": config.V2_GATE_MAX_P90_APE,
             "maximum_factor2_errors": config.V2_GATE_MAX_FACTOR2_ERRORS,
         },
+        "context_readiness": context_readiness,
         "families": family_results,
     }
 

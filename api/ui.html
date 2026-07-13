@@ -115,6 +115,9 @@
       </select></div>
       <div class="field"><label for="material">Primary material *</label><input id="material" placeholder="e.g. HDPE, mild steel"></div>
       <div class="field"><label for="quantity">Quantity</label><input id="quantity" type="number" min="0" step="any"></div>
+      <div class="field"><label for="supplier">Supplier</label><input id="supplier" placeholder="Optional; recorded for V3 evidence"></div>
+      <div class="field"><label for="location">Project location</label><input id="location" placeholder="e.g. Dubai, Abu Dhabi"></div>
+      <div class="field"><label for="quotation-date">Quotation date</label><input id="quotation-date" type="date"></div>
       <div class="field"><label for="capacity">Capacity (litres)</label><input id="capacity" type="number" min="0" step="any"></div>
       <div class="field"><label for="compartments">Compartments / streams</label><input id="compartments" type="number" min="1" max="20" step="1"></div>
       <div class="field"><label for="mobility">Fixing / mobility</label><select id="mobility">
@@ -134,7 +137,8 @@
       <button id="go">Predict price</button>
       <span id="status" class="spinner"></span>
     </div>
-    <div id="family-readiness" class="info-box">Loading V2 family readiness…</div>
+    <div id="family-readiness" class="info-box">Loading V3 family and context readiness…</div>
+    <div id="context-readiness" class="info-box">Loading contextual-adjustment evidence…</div>
     <div id="error" class="err-box hidden"></div>
   </div>
 
@@ -183,6 +187,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
 const fmt = n => n == null ? "n/a" :
   Number(n).toLocaleString(undefined, {maximumFractionDigits: 2});
 let readinessFamilies = {};
+let contextReadiness = {};
+let contextModelReadiness = {};
 let automaticPricingEnabled = false;
 
 async function loadReadiness() {
@@ -191,16 +197,30 @@ async function loadReadiness() {
     if (!response.ok) throw new Error("readiness endpoint unavailable");
     const data = await response.json();
     readinessFamilies = Object.fromEntries((data.families || []).map(item => [item.family, item]));
+    contextReadiness = data.context_readiness || {};
+    contextModelReadiness = data.context_model_readiness || {};
     automaticPricingEnabled = (data.approved_auto_families || []).length > 0;
     renderFamilyReadiness();
   } catch (error) {
-    $("family-readiness").textContent = "V2 readiness could not be loaded; production approval gates remain enforced.";
+    $("family-readiness").textContent = "V3 readiness could not be loaded; production approval gates remain enforced.";
+    $("context-readiness").textContent = "Context readiness could not be loaded; no contextual adjustment will be applied.";
   }
 }
 
 function renderFamilyReadiness() {
   const family = $("family").value;
   const item = readinessFamilies[family];
+  const contextFields = (contextReadiness.families || {})[family] || contextReadiness.overall || {};
+  const approvedContext = contextReadiness.approved_adjustments || [];
+  const modelReady = Object.values(contextFields).filter(value => value.status === "ready_for_modeling").map(value => value.field);
+  const familyModels = (contextModelReadiness.adjustments || []).filter(value => value.family === family);
+  const statisticallyReady = familyModels.filter(value => value.status === "ready_for_approval").map(value => value.field);
+  const blockedModels = familyModels.filter(value => !["ready_for_approval", "production"].includes(value.status)).length;
+  $("context-readiness").textContent =
+    `Context adjustments approved: ${approvedContext.length ? approvedContext.join(", ") : "none"}. ` +
+    `Data-ready: ${modelReady.length ? modelReady.join(", ") : "none"}. ` +
+    `Shadow models ready: ${statisticallyReady.length ? statisticallyReady.join(", ") : "none"}; ` +
+    `${blockedModels} blocked by evidence.`;
   const subtype = $("subtype");
   const selectedSubtype = subtype.value;
   const known = item?.contract?.known_subtypes || [];
@@ -210,7 +230,7 @@ function renderFamilyReadiness() {
 
   if (!family) {
     $("family-readiness").textContent = automaticPricingEnabled
-      ? "V2 shadow evaluation is active. Select a family to see its production readiness."
+      ? "V3 shadow evaluation is active. Select a family to see its production readiness."
       : "Automatic pricing is safely paused: no family currently passes the quotation-lineage release gate.";
     return;
   }
@@ -224,7 +244,7 @@ function renderFamilyReadiness() {
   } else {
     const failures = (item.release_gate_failures || []).join("; ");
     $("family-readiness").textContent =
-      `${family}: V2 shadow/manual review — ${item.priced_holdouts} priced holdouts, ` +
+      `${family}: V3 shadow/manual review — ${item.priced_holdouts} priced holdouts, ` +
       `${item.within_20 == null ? "no accuracy result" : (100 * item.within_20).toFixed(1) + "% within ±20%"}. ` +
       `Not production approved: ${failures}.`;
   }
@@ -277,6 +297,9 @@ function buildPayload(description) {
     scope: $("scope").value || null,
     civil_works: $("civil").value || null,
     material: $("material").value.trim() || null,
+    supplier: $("supplier").value.trim() || null,
+    location: $("location").value.trim() || null,
+    quotation_date: $("quotation-date").value || null,
     mobility: $("mobility").value || null,
   };
   const numeric = {quantity:"quantity", capacity:"capacity_l", compartments:"compartments", length:"length_mm",

@@ -4,6 +4,8 @@ import logging
 from functools import lru_cache
 
 import config
+from context_readiness import (build_context_readiness,
+                               context_adjustment_warnings)
 from data_corrections import correction_summary
 from data_quality import quality_summary
 from pricing_dataset import load_pricing_dataset
@@ -61,8 +63,12 @@ class PricingEngine:
         self.data_quality = quality_summary(self.dataset)
         self.data_quality["corrections"] = correction_summary(self.dataset)
         self.column_mapping = self.dataset.attrs.get("column_mapping", {})
+        self.summary_context = self.dataset.attrs.get("summary_context", {})
         self.sheet = self.dataset.attrs.get("sheet", "")
         self.searcher = SimilaritySearcher(self.dataset)
+        self.context_readiness = build_context_readiness(
+            self.dataset, self.searcher.item_attrs
+        )
         logger.info("PricingEngine ready: %d usable rows from sheet %r",
                     len(self.dataset), self.sheet)
 
@@ -95,12 +101,9 @@ class PricingEngine:
             match["scope_adjusted_rate"] = match.get("rate")
 
         warnings = list(decision["review_reasons"])
-        if search["input_attributes"].get("quantity"):
-            warnings.append(
-                "Quantity was recorded, but the present historical dataset has "
-                "no usable quantity column; volume discounts are not included "
-                "in the unit-price calculation."
-            )
+        warnings.extend(context_adjustment_warnings(
+            search["input_attributes"], self.context_readiness
+        ))
         quarantined_displayed = [m for m in matches if not m.get("pricing_eligible", True)]
         if quarantined_displayed:
             warnings.append(
@@ -138,6 +141,11 @@ class PricingEngine:
             "reasoning": reasoning,
             "price_basis": decision["pricing_method"],
             "adjustments": [],
+            "context_adjustments": {
+                "mode": self.context_readiness.get("mode", "shadow"),
+                "applied": [],
+                "factor": 1.0,
+            },
             "fallback_used": False,
             "price_source": (
                 "Production comparable engine" if decision["status"] == "priced"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the V2 quotation-lineage-held-out readiness scorecard."""
+"""Generate the V3 family and contextual-evidence readiness scorecard."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def main() -> int:
     parser.add_argument(
         "--enforce-production",
         action="store_true",
-        help="Fail when an already-approved family no longer passes V2 gates.",
+        help="Fail when an already-approved family no longer passes release gates.",
     )
     args = parser.parse_args()
     report = evaluate_family_readiness(args.data, args.corrections)

@@ -5,6 +5,8 @@ import re
 
 import pandas as pd
 
+from context_readiness import normalize_quotation_date
+
 
 class EmptyDatasetError(Exception):
     """Raised when cleaning leaves no usable rows."""
@@ -160,7 +162,11 @@ def stable_record_id(row) -> str:
 def compose_search_text(row) -> str:
     """Build searchable evidence after any reviewed field corrections."""
     parts = [str(row.get("clean_text") or "")]
-    for field in ("category", "section", "location", "remarks"):
+    # V3 context fields must not influence retrieval while they remain in
+    # shadow mode. In particular, adding a reviewed project location to the
+    # TF-IDF document would silently change ranking even with a 1.0 context
+    # adjustment factor. Location remains available in match audit metadata.
+    for field in ("category", "section", "remarks"):
         parts.append(normalize_search_text(row.get(field)))
     return " ".join(part for part in parts if part).strip()
 
@@ -198,6 +204,9 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df["rate"] > 0]
 
     df["unit_norm"] = df["unit"].map(normalize_unit)
+    # Keep the source's human-readable date for traceability and add one
+    # canonical field for V3 temporal evidence checks and future modelling.
+    df["quotation_date"] = df["date"].map(normalize_quotation_date)
     df["record_id"] = df.apply(stable_record_id, axis=1)
     lineage = df["source"].map(source_lineage)
     df["source_group"] = lineage.map(lambda value: value[0])

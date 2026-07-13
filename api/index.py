@@ -18,6 +18,10 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from cleaner import EmptyDatasetError
+from context_readiness import ContextReadinessError, compact_context_readiness
+from context_modeling import (ContextModelEvaluationError,
+                              compact_context_model_readiness,
+                              load_context_model_snapshot)
 from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
 from family_readiness import dataset_fingerprint, load_readiness_snapshot
@@ -42,7 +46,8 @@ def get_engine():
         try:
             from pricing_engine import PricingEngine
             _engine = PricingEngine()
-        except (DataLoadError, EmptyDatasetError, DataCorrectionError) as exc:
+        except (DataLoadError, EmptyDatasetError, DataCorrectionError,
+                ContextReadinessError) as exc:
             _engine_error = str(exc)
     if _engine is None:
         raise HTTPException(status_code=503, detail=f"Dataset unavailable: {_engine_error}")
@@ -58,6 +63,9 @@ class PredictRequest(BaseModel):
     unit: str | None = Field(None, max_length=30)
     scope: str | None = Field(None, max_length=100)
     material: str | None = Field(None, max_length=100)
+    supplier: str | None = Field(None, max_length=200)
+    location: str | None = Field(None, max_length=200)
+    quotation_date: str | None = Field(None, max_length=50)
     civil_works: bool | str | None = None
     quantity: float | None = Field(None, gt=0)
     capacity_l: float | None = Field(None, gt=0)
@@ -73,6 +81,7 @@ class PredictRequest(BaseModel):
     def pricing_context(self) -> dict:
         fields = (
             "product_family", "subtype", "unit", "scope", "material",
+            "supplier", "location", "quotation_date",
             "civil_works", "quantity", "capacity_l", "compartments",
             "length_mm", "width_mm", "height_mm", "diameter_mm",
             "thickness_mm", "mobility", "features",
@@ -103,7 +112,7 @@ def api_info():
         "pricing_version": PRICING_ENGINE_VERSION,
         "endpoints": {"POST /predict": "price or request manual review",
                       "GET /health": "dataset and quality-gate status",
-                      "GET /readiness": "V2 family shadow scorecard"},
+                      "GET /readiness": "V3 family and context shadow scorecard"},
         "docs": "/docs",
     }
 
@@ -111,10 +120,22 @@ def api_info():
 @app.get("/health")
 def health():
     engine = get_engine()
+    try:
+        context_model_snapshot = load_context_model_snapshot()
+        context_models = compact_context_model_readiness(
+            context_model_snapshot
+        )
+        context_models["snapshot_current"] = (
+            context_model_snapshot.get("dataset_fingerprint")
+            == dataset_fingerprint(engine.dataset)
+        )
+    except ContextModelEvaluationError as exc:
+        context_models = {"mode": "unavailable", "error": str(exc)}
     return {
         "status": "ok",
         "dataset_rows": len(engine.dataset),
         "sheet": engine.sheet,
+        "summary_context": engine.summary_context,
         "pricing_mode": (
             "guarded deterministic comparables"
             if APPROVED_AUTO_FAMILIES else "manual review only"
@@ -122,22 +143,31 @@ def health():
         "approved_auto_families": sorted(APPROVED_AUTO_FAMILIES),
         "pricing_version": PRICING_ENGINE_VERSION,
         "data_quality": engine.data_quality,
+        "context_adjustments": compact_context_readiness(
+            engine.context_readiness
+        ),
+        "context_model_evaluation": context_models,
     }
 
 
 @app.get("/readiness")
 def readiness():
-    """Return the audited V2 snapshot; never changes the production allow-list."""
+    """Return the audited V3 snapshot; never changes production allow-lists."""
     engine = get_engine()
     try:
         snapshot = load_readiness_snapshot()
-    except ValueError as exc:
+        context_models = load_context_model_snapshot()
+    except (ValueError, ContextModelEvaluationError) as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     current = dataset_fingerprint(engine.dataset)
     return {
         **snapshot,
         "snapshot_current": snapshot.get("dataset_fingerprint") == current,
         "current_dataset_fingerprint": current,
+        "context_model_readiness": context_models,
+        "context_model_snapshot_current": (
+            context_models.get("dataset_fingerprint") == current
+        ),
     }
 
 

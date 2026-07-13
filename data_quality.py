@@ -39,8 +39,11 @@ def annotate_data_quality(df: pd.DataFrame) -> pd.DataFrame:
             flags[int(i)].append("missing_unit")
         if not str(row.get("source") or "").strip():
             flags[int(i)].append("missing_source")
-        if not str(row.get("date") or "").strip():
+        raw_date = str(row.get("date") or "").strip()
+        if not raw_date:
             flags[int(i)].append("missing_date")
+        elif not str(row.get("quotation_date") or "").strip():
+            flags[int(i)].append("invalid_date")
         if bool(row.get("manual_pricing_exclusion", False)):
             flags[int(i)].append("manual_pricing_exclusion")
 

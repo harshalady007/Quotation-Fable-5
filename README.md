@@ -1,4 +1,4 @@
-# Quotation Pricing Bot — V2 Safety Rebuild
+# Quotation Pricing Bot — V3 Context Shadow Modeling
 
 A guarded quotation-pricing assistant built from historical Excel data. The
 system extracts product attributes, retrieves comparable quotation items and
@@ -12,11 +12,31 @@ The system never forces a price. DeepSeek is no longer responsible for the
 final number; automatic prices come from validated, same-family, same-unit and
 same-scope historical comparables.
 
-V2 shadow infrastructure is active: versioned estimator corrections,
+V2 safety infrastructure remains active: versioned estimator corrections,
 family-specific subtype contracts, a correction review queue and full
 quotation-lineage holdout scoring across every supported family. PDF
 revisions are grouped under one quotation ID and superseded revisions are
 quarantined from pricing evidence.
+
+V3 shadow infrastructure adds a context data contract for quantity, supplier,
+quotation date and project location. Quote-level project/client/contractor and
+currency metadata are safely joined from the workbook's `Quotation Summary`
+sheet. Context fields are recorded but cannot alter a price until they have
+enough matched-product evidence, pass lineage-held-out calibration and are
+explicitly approved.
+
+V3.1 adds the operational evidence pipeline: a spreadsheet review queue keyed
+by stable row IDs, dataset-fingerprint protection against stale imports,
+field-level reviewer/source metadata, atomic correction-manifest writes and a
+dry-run-first importer. Reviewed context is never read from filenames or
+guessed from descriptions.
+
+V3.2 adds an offline-only model evaluator for every family/context pair. It
+compares a fixed-hyperparameter context model against an exact-product cohort
+median with the complete quotation lineage held out. Quotation-date models
+and every other context model use only strictly earlier training evidence. The
+evaluator persists metrics, not fitted models, and cannot change a
+request-time price.
 
 ## Current production scope
 
@@ -30,12 +50,21 @@ The application remains usable for guarded comparable discovery and explicit
 manual review. A family is re-enabled only after it passes all accuracy,
 coverage, large-error and independent-quotation gates.
 
+No V3 context adjustment is currently approved. In the present workbook,
+quantity, supplier and location have no usable line-level values. Quotation
+dates are fully normalized, but the stricter exact-specification cohort check
+finds only one qualifying cohort overall; the evidence gate requires at least
+three. All 24 family/context model candidates are therefore blocked by data.
+The safe result is a recorded field plus an explanatory warning, not an
+invented multiplier.
+
 Run the evaluation yourself; the result is derived from the repository data,
 not hardcoded:
 
 ```bash
 python scripts/evaluate_production.py --enforce-gate
 python scripts/evaluate_families.py --enforce-production --check-snapshot
+python scripts/evaluate_context_models.py --enforce-production --check-snapshot
 ```
 
 ## Safety architecture
@@ -50,6 +79,8 @@ python scripts/evaluate_families.py --enforce-production --check-snapshot
 8. At least three validated comparables are required.
 9. Weak similarity or excessive rate dispersion triggers manual review.
 10. The final price is a robust similarity-weighted median.
+11. V3 context effects require minimum coverage, independent quotation groups,
+    multiple matched product cohorts and explicit production approval.
 
 Quarantined rows remain visible to estimators but cannot set an automatic
 price.
@@ -63,20 +94,27 @@ price.
 ├── pricing_engine.py             # Production orchestration
 ├── production_pricing.py         # Comparable gates, pricing and abstention
 ├── pricing_context.py            # User-confirmed field normalization
+├── context_readiness.py          # V3 context evidence and activation gates
+├── context_enrichment.py         # Audited context export/import workflow
+├── context_modeling.py           # Group/time-held-out shadow evaluation
 ├── data_quality.py               # Quarantine rules and health summary
 ├── data_corrections.py           # Approved estimator correction overlay
 ├── pricing_dataset.py            # One load/clean/correct/quality pipeline
-├── family_readiness.py           # V2 quotation-lineage-held-out scorecard
+├── family_readiness.py           # V3 family/context readiness scorecard
 ├── correction_queue.py           # Stable review queue for missing fields
 ├── similarity_search.py          # Fixed-pool hybrid retrieval
 ├── attribute_extractor.py        # Family/specification extraction
 ├── cleaner.py                    # Text, boilerplate and unit cleaning
 ├── data_loader.py                # Excel loading and column detection
 ├── scripts/evaluate_production.py# Quotation-lineage holdout evaluation
-├── scripts/evaluate_families.py  # All-family V2 shadow evaluation
+├── scripts/evaluate_families.py  # V3 family/context shadow evaluation
 ├── scripts/export_correction_queue.py
+├── scripts/export_context_review.py
+├── scripts/import_context_reviews.py
+├── scripts/evaluate_context_models.py
 ├── data/pricing_corrections.json # Versioned estimator decisions
 ├── data/family_readiness.json    # Audited readiness snapshot
+├── data/context_model_readiness.json
 ├── data/quotation_items.xlsx
 └── tests/
 ```
@@ -138,7 +176,10 @@ export QUOTATION_DATA_PATH=/path/to/quotation_items.xlsx
   "length_mm": 9460,
   "width_mm": 4900,
   "height_mm": 800,
-  "quantity": 10
+  "quantity": 10,
+  "supplier": "Example supplier",
+  "location": "Dubai",
+  "quotation_date": "2026-07-13"
 }
 ```
 
@@ -174,11 +215,13 @@ Safe refusal:
 `GET /health` reports usable rows, quarantined rows, defect counts and the
 active pricing mode.
 
-`GET /readiness` returns the current V2 family scorecard, release-gate
-failures, required fields and known subtypes. `snapshot_current` is false if
-the dataset/corrections changed without regenerating the audited snapshot.
+`GET /readiness` returns the current V3 family scorecard, release-gate
+failures, required fields, known subtypes and per-family contextual-evidence
+profiles plus the offline context-model scorecard. `snapshot_current` and
+`context_model_snapshot_current` become false if the dataset/corrections
+changed without regenerating the corresponding audited snapshots.
 
-## V2 correction workflow
+## Estimator correction workflow
 
 The source workbook is immutable. Export a review queue, confirm values with
 an estimator, then add only reviewed decisions to the correction manifest:
@@ -193,15 +236,84 @@ no production effect. An approved record requires a reason and `reviewed_by`;
 it can correct source fields, override structured attributes or explicitly
 exclude a row from automatic pricing.
 
+## V3 context-enrichment workflow
+
+Export the highest-value current-revision rows to an Excel template:
+
+```bash
+python scripts/export_context_review.py --family bench --format xlsx \
+  --output bench-context-review.xlsx
+```
+
+An estimator must verify values against the original quotation, fill one or
+more `reviewed_*` fields, set `review_status` to `approved`, and provide an
+evidence reference, reason, reviewer and review date. Quantity is line-level;
+supplier, location and quotation date may repeat across rows only when the
+source document confirms that they apply to those rows.
+
+Validate the completed file without changing the manifest:
+
+```bash
+python scripts/import_context_reviews.py bench-context-review.xlsx
+```
+
+After reviewing the dry-run summary, apply it atomically:
+
+```bash
+python scripts/import_context_reviews.py bench-context-review.xlsx --write
+```
+
+The importer refuses stale dataset fingerprints, missing record IDs,
+placeholder values, undocumented approvals, implicit overwrites, conflicting
+approved values and merges that would accidentally activate an unrelated
+proposed correction. Schema-2 correction records keep evidence metadata per
+context field.
+
+## V3 shadow-model evaluation
+
+Regenerate the deterministic offline scorecard after reviewed context data or
+pricing code changes:
+
+```bash
+python scripts/evaluate_families.py \
+  --output data/family_readiness.json --quiet
+python scripts/evaluate_context_models.py \
+  --output data/context_model_readiness.json --quiet
+```
+
+Each candidate adjustment is scoped as `family.field`, such as
+`bench.quantity`. For every field, the evaluator removes the target quotation,
+all its PDF revisions and every quotation on or after the target date.
+Duplicate line evidence is collapsed to one median observation per
+quotation/cohort/context value; training and evaluation metrics give each
+quotation equal total weight so a long quotation cannot dominate the result.
+
+The candidate predicts a bounded factor on top of the held-out exact-product
+cohort median. It must independently satisfy minimum cases, quotation groups,
+cohorts and evaluation coverage; achieve at least 80% within ±20%; stay below
+15% median APE and 40% p90 APE with no factor-of-two errors; improve median
+APE by at least two percentage points; improve at least 55% of cases; and
+avoid depending on the factor clamp. The base family must separately pass its
+production pricing gate. No hyperparameter search is performed on evaluation
+data.
+
+Passing this scorecard still does not activate pricing. Activation requires a
+family-scoped implementation and explicit allow-list approval, and the base
+family must already be approved.
+
 ## Tests and validation
 
 ```bash
 pytest -q
 python scripts/evaluate_production.py --enforce-gate
+python scripts/evaluate_families.py --enforce-production --check-snapshot --quiet
+python scripts/evaluate_context_models.py --enforce-production --check-snapshot --quiet
 ```
 
 Unit tests cover cleaning, attribute extraction, explicit-context overrides,
-quarantine rules, deterministic comparable pricing and refusal behavior.
+quarantine rules, deterministic comparable pricing, refusal behavior,
+family-scoped activation safety, quotation-balanced metrics and leakage-safe
+rolling context-model evaluation.
 
 The evaluation is grouped by quotation ID: when an item is tested, every row
 from the quotation and all of its PDF revisions are removed from the
