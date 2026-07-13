@@ -408,7 +408,7 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
     linear_units = ("m", "m2", "m3")
     if (input_attrs.get("unit_hint") not in linear_units
             and item_attrs.get("unit_hint") not in linear_units):
-        judge("max_size_mm", 1.5, lambda a, b: _close(a, b, 0.35),
+        judge("max_size_mm", 1.5, lambda a, b: _close(a, b, 0.25),
               lambda a, b: f"very different overall size ({b:g}mm vs {a:g}mm "
                            "largest dimension)")
     judge("location", 0.5, lambda a, b: a == b)

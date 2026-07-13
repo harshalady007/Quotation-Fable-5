@@ -74,6 +74,9 @@ def normalize_text(text) -> str:
     s = str(text).replace("\r", "\n")
     s = s.replace("\n", " ")
     s = s.lower()
+    # Unicode multiplication signs in dimension chains ("1500 × 500 × 1000")
+    # must become 'x' BEFORE junk-character removal deletes them.
+    s = s.replace("×", " x ").replace("✕", " x ").replace("✖", " x ")
     s = _JUNK_CHARS.sub(" ", s)
     for pattern, repl in _NORMALIZE_PATTERNS:
         s = pattern.sub(repl, s)

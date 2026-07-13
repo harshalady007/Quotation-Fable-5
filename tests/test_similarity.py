@@ -40,6 +40,13 @@ SAMPLE = make_df([
 ])
 
 
+def test_unicode_multiplication_sign_dimensions():
+    s = normalize_text("Recycling bin, 1500 × 500 × 1000 mm (L × W × H)")
+    attrs = extract_attributes(s)
+    assert attrs["sizes_mm"] == [500.0, 1000.0, 1500.0]
+    assert attrs["max_size_mm"] == 1500.0
+
+
 def test_normalize_text_preserves_specs():
     s = normalize_text("Supply & Install 50 mm DIA. S.S-316 handrail,\nBrushed finish")
     assert "50mm" in s
