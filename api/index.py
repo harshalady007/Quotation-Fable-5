@@ -25,7 +25,9 @@ from context_modeling import (ContextModelEvaluationError,
 from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
 from family_readiness import dataset_fingerprint, load_readiness_snapshot
-from production_pricing import APPROVED_AUTO_FAMILIES, PRICING_ENGINE_VERSION
+from production_pricing import (APPROVED_AUTO_FAMILIES,
+                                ESTIMATE_ENABLED_FAMILIES,
+                                PRICING_ENGINE_VERSION, PRICING_POLICY)
 from quotation_workflow.domain import WORKFLOW_VERSION
 from quotation_workflow.readiness import (compact_workflow_readiness,
                                            workflow_readiness as
@@ -34,8 +36,8 @@ from similarity_search import SearchError
 
 app = FastAPI(
     title="Quotation Pricing Bot API",
-    description="Guarded comparable pricing from validated historical "
-                "quotation evidence, with manual-review abstention.",
+    description="Deterministic unit-price estimates from quality-eligible "
+                "historical quotation evidence, with explicit uncertainty.",
     version=PRICING_ENGINE_VERSION,
 )
 
@@ -115,8 +117,9 @@ def api_info():
         "service": "Quotation Pricing Bot API",
         "pricing_version": PRICING_ENGINE_VERSION,
         "workflow_version": WORKFLOW_VERSION,
+        "pricing_policy": PRICING_POLICY,
         "endpoints": {
-            "POST /predict": "price or request manual review",
+            "POST /predict": "numeric unit-price estimate for every valid request",
             "GET /health": "dataset and quality-gate status",
             "GET /readiness": "V3 family and context shadow scorecard",
             "GET /workflow/readiness": (
@@ -146,11 +149,12 @@ def health():
         "dataset_rows": len(engine.dataset),
         "sheet": engine.sheet,
         "summary_context": engine.summary_context,
-        "pricing_mode": (
-            "guarded deterministic comparables"
-            if APPROVED_AUTO_FAMILIES else "manual review only"
-        ),
+        "pricing_mode": "universal deterministic estimates",
+        "pricing_policy": PRICING_POLICY,
+        "manual_review_enabled": False,
+        "estimate_enabled_families": sorted(ESTIMATE_ENABLED_FAMILIES),
         "approved_auto_families": sorted(APPROVED_AUTO_FAMILIES),
+        "release_gate_approved_families": sorted(APPROVED_AUTO_FAMILIES),
         "pricing_version": PRICING_ENGINE_VERSION,
         "data_quality": engine.data_quality,
         "context_adjustments": compact_context_readiness(

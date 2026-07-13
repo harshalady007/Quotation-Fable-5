@@ -1,16 +1,16 @@
 # Quotation Pricing Bot — V4 Workflow Foundation
 
-A guarded quotation-pricing assistant built from historical Excel data. The
-system extracts product attributes, retrieves comparable quotation items and
-either:
+A deterministic quotation-pricing assistant built from historical Excel data.
+The system extracts product attributes, retrieves comparable quotation items
+and returns a numeric unit-price estimate for every valid request. Each result
+includes an evidence tier, confidence, price interval and exact warnings when
+the available history is sparse or incomplete.
 
-- returns a deterministic automatic price when the evidence passes every
-  production gate; or
-- returns `manual_review` with exact reasons when the data is insufficient.
-
-The system never forces a price. DeepSeek is no longer responsible for the
-final number; automatic prices come from validated, same-family, same-unit and
-same-scope historical comparables.
+DeepSeek is no longer responsible for the final number. Estimates use only
+quality-eligible historical rates, never mix unit bases, and prefer validated
+same-family, same-unit and same-scope comparables. When strict evidence is not
+available, the engine uses a deterministic fallback and labels the additional
+uncertainty instead of returning `manual_review`.
 
 V2 safety infrastructure remains active: versioned estimator corrections,
 family-specific subtype contracts, a correction review queue and full
@@ -48,23 +48,33 @@ durable quotation storage.
 
 ## Current production scope
 
-Automatic pricing is currently **paused for every family**. The earlier
-planter result treated R1/R2 copies of the same quotation as independent
-evidence; the corrected lineage-held-out evaluation produces no qualifying
-planter holdouts. Keeping planter enabled would therefore claim validation
-that the data does not support.
+Numeric estimates are enabled for **every supported family**. None of the
+families currently passes the independent quotation-lineage accuracy gate, so
+the API does not claim that these estimates are validated production prices.
+The earlier planter result treated R1/R2 copies of the same quotation as
+independent evidence; the corrected holdout evaluation still records that
+limitation.
 
-The application remains usable for guarded comparable discovery and explicit
-manual review. A family is re-enabled only after it passes all accuracy,
-coverage, large-error and independent-quotation gates.
+Request-time pricing and offline validation are intentionally separate. The
+request path always produces the best available deterministic estimate. The
+readiness scorecard continues to report the real accuracy, coverage,
+large-error and independent-quotation results without converting a user policy
+decision into a false validation claim.
+
+On the current 772-row lineage-held-out coverage audit, the universal policy
+returns a positive estimate for 772/772 rows and preserves all 727 stated unit
+bases. Accuracy is still weak: 29.53% of estimates are within ±20%, median
+absolute percentage error is 41.5%, and 246 cases miss by more than a factor
+of two. Consequently, no family is release-gate approved and request-time
+results remain `Low` or `Very low` confidence until the dataset improves.
 
 No V3 context adjustment is currently approved. In the present workbook,
 quantity, supplier and location have no usable line-level values. Quotation
 dates are fully normalized, but the stricter exact-specification cohort check
 finds only one qualifying cohort overall; the evidence gate requires at least
 three. All 24 family/context model candidates are therefore blocked by data.
-The safe result is a recorded field plus an explanatory warning, not an
-invented multiplier.
+The result is a recorded field plus an explanatory warning; unsupported
+context fields still use a neutral `1.0` multiplier.
 
 The V4 workflow is currently at the **foundation** stage. The deployed API may
 report its capabilities through `GET /workflow/readiness`, but workflow writes
@@ -90,9 +100,11 @@ python scripts/evaluate_context_models.py --enforce-production --check-snapshot
 5. Candidate retrieval is independent of how many matches the UI displays.
 6. Pricing requires exact product family, unit and commercial scope.
 7. Family-critical dimensions/capacity and material must be present.
-8. At least three validated comparables are required.
-9. Weak similarity or excessive rate dispersion triggers manual review.
-10. The final price is a robust similarity-weighted median.
+8. Strict pricing prefers at least three validated comparables; otherwise the
+   fallback uses the strongest coherent quality-eligible evidence.
+9. Weak similarity or excessive rate dispersion lowers confidence and widens
+   the returned price interval.
+10. Every estimate is a robust similarity-weighted median.
 11. V3 context effects require minimum coverage, independent quotation groups,
     multiple matched product cohorts and explicit production approval.
 12. V4 submitted quotation revisions are immutable and use decimal money.
@@ -110,7 +122,7 @@ price.
 ├── api/ui.html                   # Structured browser UI
 ├── streamlit_app.py              # Structured Streamlit UI
 ├── pricing_engine.py             # Production orchestration
-├── production_pricing.py         # Comparable gates, pricing and abstention
+├── production_pricing.py         # Strict gates and universal estimate fallback
 ├── pricing_context.py            # User-confirmed field normalization
 ├── context_readiness.py          # V3 context evidence and activation gates
 ├── context_enrichment.py         # Audited context export/import workflow
@@ -227,31 +239,34 @@ SQLite path.
 }
 ```
 
-Current safe decision while no family is approved:
+Estimate response while no family is historically release-approved:
 
 ```json
 {
-  "status": "manual_review",
-  "predicted_unit_price": null,
+  "pricing_policy": "always_estimate",
+  "status": "priced",
+  "predicted_unit_price": 11000.00,
   "currency": "AED",
-  "confidence": "Manual review",
-  "price_source": "Historical comparable evidence (manual review)",
-  "price_interval": null,
-  "review_reasons": [
-    "Product family 'planter' has not yet passed the quotation-lineage holdout accuracy gate; comparables are shown for manual review."
+  "confidence": "Low",
+  "price_source": "Universal validated-comparable estimate",
+  "price_interval": {"low": 8250.00, "high": 13750.00},
+  "evidence_tier": "same_family_unit_scope_material_spec_near",
+  "estimate_warnings": [
+    "Product family 'planter' has not passed the historical quotation-lineage accuracy gate; this numeric result is an estimate under the always-estimate policy."
   ]
 }
 ```
 
-Safe refusal:
+Sparse-evidence response:
 
 ```json
 {
-  "status": "manual_review",
-  "predicted_unit_price": null,
-  "confidence": "Manual review",
-  "review_reasons": [
-    "Only 2 validated same-family, same-unit, same-scope comparables remain; at least 3 are required."
+  "status": "priced",
+  "predicted_unit_price": 3650.00,
+  "confidence": "Very low",
+  "price_interval": {"low": 1825.00, "high": 5475.00},
+  "estimate_warnings": [
+    "Estimate fallback tier: same_unit_cross_family_scope_adjusted; 2 independent quality-eligible quotation lineages set the price."
   ]
 }
 ```

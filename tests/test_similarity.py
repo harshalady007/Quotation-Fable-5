@@ -192,6 +192,41 @@ def test_search_result_shape():
     assert "bollard" in m["clean_description"]
 
 
+def test_pricing_reserve_keeps_requested_unit_outside_top_fifty():
+    rows = [
+        {
+            "description": f"Custom item variant {index}",
+            "unit": "Nos",
+            "rate": 100.0 + index,
+            "source": f"q-{index}.pdf",
+        }
+        for index in range(60)
+    ]
+    rows.append({
+        "description": "Unrelated linear fabrication",
+        "unit": "LM",
+        "rate": 25.0,
+        "source": "linear.pdf",
+    })
+    searcher = SimilaritySearcher(clean_dataset(make_df(rows)))
+    search = searcher.search(
+        "Custom item", top_k=5, pricing_context={"unit": "m"}
+    )
+    assert any(
+        match["unit_norm"] == "m"
+        for match in search["candidate_matches"]
+    )
+
+    from production_pricing import price_from_comparables
+    decision = price_from_comparables(
+        search["input_attributes"], search["candidate_matches"]
+    )
+    assert decision["status"] == "priced"
+    assert decision["estimated_unit"] == "m"
+    assert decision["predicted_unit_price"] == 25.0
+    assert all(match["unit_norm"] == "m" for match in decision["comparables"])
+
+
 def test_scope_is_never_assumed_for_production_pricing():
     searcher = SimilaritySearcher(clean_dataset(SAMPLE))
     # Missing commercial scope must remain missing so the production gate can

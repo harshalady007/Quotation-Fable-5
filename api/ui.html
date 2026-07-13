@@ -93,18 +93,18 @@
   <div class="card">
     <textarea id="desc" placeholder="e.g. Supply and install 50mm diameter stainless steel handrail with brushed finish"></textarea>
     <div class="formgrid">
-      <div class="field"><label for="family">Product family *</label><select id="family">
+      <div class="field"><label for="family">Product family (recommended)</label><select id="family">
         <option value="">Select…</option><option>planter</option><option>litter bin</option>
         <option>recycle bin</option><option>bench</option><option>bollard</option><option>bike rack</option>
       </select></div>
       <div class="field"><label for="subtype">Product subtype</label><select id="subtype">
         <option value="">Not specified</option>
       </select></div>
-      <div class="field"><label for="unit">Unit *</label><select id="unit">
+      <div class="field"><label for="unit">Unit (recommended)</label><select id="unit">
         <option value="">Select…</option><option value="no">No.</option><option value="m">Metre</option>
         <option value="m2">m²</option><option value="set">Set</option>
       </select></div>
-      <div class="field"><label for="scope">Commercial scope *</label><select id="scope">
+      <div class="field"><label for="scope">Commercial scope (recommended)</label><select id="scope">
         <option value="">Select…</option><option value="supply only">Supply only</option>
         <option value="supply and delivery">Supply and delivery</option>
         <option value="supply and install">Supply and install</option>
@@ -113,7 +113,7 @@
         <option value="">Not applicable/unknown</option><option value="excluded">Excluded</option>
         <option value="included">Included</option>
       </select></div>
-      <div class="field"><label for="material">Primary material *</label><input id="material" placeholder="e.g. HDPE, mild steel"></div>
+      <div class="field"><label for="material">Primary material (recommended)</label><input id="material" placeholder="e.g. HDPE, mild steel"></div>
       <div class="field"><label for="quantity">Quantity</label><input id="quantity" type="number" min="0" step="any"></div>
       <div class="field"><label for="supplier">Supplier</label><input id="supplier" placeholder="Optional; recorded for V3 evidence"></div>
       <div class="field"><label for="location">Project location</label><input id="location" placeholder="e.g. Dubai, Abu Dhabi"></div>
@@ -137,7 +137,7 @@
       <button id="go">Predict price</button>
       <span id="status" class="spinner"></span>
     </div>
-    <div id="family-readiness" class="info-box">Loading V3 family and context readiness…</div>
+    <div id="family-readiness" class="info-box">Loading estimate and validation readiness…</div>
     <div id="context-readiness" class="info-box">Loading contextual-adjustment evidence…</div>
     <div id="error" class="err-box hidden"></div>
   </div>
@@ -146,7 +146,7 @@
     <div class="card">
       <div class="metrics">
         <div class="metric"><div class="label">Decision</div><div class="value" id="m-status">—</div></div>
-        <div class="metric"><div class="label">Predicted unit price</div><div class="value" id="m-price">—</div></div>
+        <div class="metric"><div class="label">Estimated unit price</div><div class="value" id="m-price">—</div></div>
         <div class="metric"><div class="label">Unit</div><div class="value" id="m-unit">—</div></div>
         <div class="metric"><div class="label">Confidence</div><div class="value" id="m-conf">—</div></div>
         <div class="metric"><div class="label">Price source</div><div class="value" id="m-src">—</div></div>
@@ -189,7 +189,7 @@ const fmt = n => n == null ? "n/a" :
 let readinessFamilies = {};
 let contextReadiness = {};
 let contextModelReadiness = {};
-let automaticPricingEnabled = false;
+let estimateEnabledFamilies = [];
 
 async function loadReadiness() {
   try {
@@ -199,10 +199,10 @@ async function loadReadiness() {
     readinessFamilies = Object.fromEntries((data.families || []).map(item => [item.family, item]));
     contextReadiness = data.context_readiness || {};
     contextModelReadiness = data.context_model_readiness || {};
-    automaticPricingEnabled = (data.approved_auto_families || []).length > 0;
+    estimateEnabledFamilies = data.estimate_enabled_families || [];
     renderFamilyReadiness();
   } catch (error) {
-    $("family-readiness").textContent = "V3 readiness could not be loaded; production approval gates remain enforced.";
+    $("family-readiness").textContent = "Historical validation readiness could not be loaded; numeric estimates remain explicitly uncertainty-labelled.";
     $("context-readiness").textContent = "Context readiness could not be loaded; no contextual adjustment will be applied.";
   }
 }
@@ -229,13 +229,13 @@ function renderFamilyReadiness() {
   if (known.includes(selectedSubtype)) subtype.value = selectedSubtype;
 
   if (!family) {
-    $("family-readiness").textContent = automaticPricingEnabled
-      ? "V3 shadow evaluation is active. Select a family to see its production readiness."
-      : "Automatic pricing is safely paused: no family currently passes the quotation-lineage release gate.";
+    $("family-readiness").textContent =
+      "Numeric estimates are enabled for every supported family. Select a family to see its independent historical-validation status.";
     return;
   }
   if (!item) {
-    $("family-readiness").textContent = "This family has no readiness snapshot and cannot price automatically.";
+    $("family-readiness").textContent =
+      "This family has no validation snapshot. A numeric estimate can still be returned with very-low confidence.";
     return;
   }
   if (item.status === "production") {
@@ -244,9 +244,9 @@ function renderFamilyReadiness() {
   } else {
     const failures = (item.release_gate_failures || []).join("; ");
     $("family-readiness").textContent =
-      `${family}: V3 shadow/manual review — ${item.priced_holdouts} priced holdouts, ` +
+      `${family}: numeric estimates enabled; validation remains in shadow — ${item.priced_holdouts} priced holdouts, ` +
       `${item.within_20 == null ? "no accuracy result" : (100 * item.within_20).toFixed(1) + "% within ±20%"}. ` +
-      `Not production approved: ${failures}.`;
+      `Evidence limitations: ${failures}.`;
   }
 }
 
@@ -317,7 +317,7 @@ function showError(msg) {
 }
 
 function render(d) {
-  $("m-status").textContent = d.status === "priced" ? "Automatic price" : "Manual review";
+  $("m-status").textContent = "Price estimate";
   $("m-price").textContent = d.predicted_unit_price == null ? "n/a"
     : `${fmt(d.predicted_unit_price)} ${esc(d.currency)}`;
   $("m-unit").textContent = d.unit || "unknown";
@@ -329,7 +329,7 @@ function render(d) {
 
   $("reasoning").textContent = d.reasoning || "No reasoning returned.";
   $("anchor").innerHTML = d.statistical_anchor != null
-    ? `<p><strong>${d.status === "priced" ? "Production estimate" : "Indicative comparable median"}:</strong>
+    ? `<p><strong>Comparable estimate anchor:</strong>
        ${fmt(d.statistical_anchor)} ${esc(d.currency)} (${esc(d.anchor_method || "comparables")})</p>` : "";
   $("basis").innerHTML = d.price_basis
     ? `<p><strong>Price basis:</strong> ${esc(d.price_basis)}</p>` : "";

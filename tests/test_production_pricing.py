@@ -1,6 +1,7 @@
 """Production safety-gate and deterministic pricing tests."""
 
 import json
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -148,17 +149,17 @@ def test_production_price_uses_validated_comparables():
     assert len(decision["comparables"]) == 3
 
 
-def test_production_abstains_when_evidence_or_specs_are_missing():
+def test_strict_evaluator_abstains_when_evidence_or_specs_are_missing():
     missing = price_from_comparables(planter_attrs(length_mm=None), [
         comparable(100, 0.9), comparable(110, 0.8), comparable(120, 0.7)
-    ], approved_families={"planter"})
-    assert missing["status"] == "manual_review"
+    ], approved_families={"planter"}, always_estimate=False)
+    assert missing["status"] == "abstained"
     assert missing["predicted_unit_price"] is None
 
     sparse = price_from_comparables(planter_attrs(), [
         comparable(100, 0.9), comparable(110, 0.8)
-    ], approved_families={"planter"})
-    assert sparse["status"] == "manual_review"
+    ], approved_families={"planter"}, always_estimate=False)
+    assert sparse["status"] == "abstained"
     assert any("at least 3" in reason for reason in sparse["review_reasons"])
 
 
@@ -275,13 +276,49 @@ def test_production_never_mixes_known_subtypes():
                for m in decision["comparables"])
 
 
-def test_current_allowlist_keeps_every_family_in_manual_review():
+def test_default_policy_prices_unapproved_family_with_warning():
     decision = price_from_comparables(planter_attrs(), [
         comparable(100, 0.9), comparable(110, 0.8), comparable(120, 0.7)
     ])
-    assert decision["status"] == "manual_review"
-    assert any("has not yet passed" in reason
+    assert decision["status"] == "priced"
+    assert decision["predicted_unit_price"] == 110.0
+    assert decision["confidence"] == "Low"
+    assert decision["price_interval"] == {"low": 82.5, "high": 137.5}
+    assert not decision["release_gate_approved"]
+    assert any("has not passed" in reason
                for reason in decision["review_reasons"])
+
+
+def test_universal_policy_prices_sparse_or_incomplete_evidence():
+    missing = price_from_comparables(planter_attrs(length_mm=None), [
+        comparable(100, 0.9), comparable(110, 0.8), comparable(120, 0.7)
+    ])
+    assert missing["status"] == "priced"
+    assert missing["predicted_unit_price"] == 110.0
+    assert missing["fallback_used"]
+    assert missing["confidence"] in {"Low", "Very low"}
+    assert missing["price_interval"]["low"] < 110 < missing["price_interval"]["high"]
+
+    sparse = price_from_comparables(planter_attrs(), [
+        comparable(100, 0.9), comparable(110, 0.8)
+    ])
+    assert sparse["status"] == "priced"
+    assert sparse["predicted_unit_price"] in {100.0, 110.0}
+    assert sparse["fallback_used"]
+
+
+def test_universal_policy_excludes_quarantined_rates_and_keeps_unit_basis():
+    wrong_unit = comparable(5000, 0.99)
+    wrong_unit["unit_norm"] = "m"
+    quarantined = comparable(9000, 1.0, eligible=False)
+    decision = price_from_comparables(planter_attrs(), [
+        wrong_unit, quarantined, comparable(100, 0.8), comparable(120, 0.7)
+    ])
+    assert decision["status"] == "priced"
+    assert decision["estimated_unit"] == "no"
+    assert decision["predicted_unit_price"] in {100.0, 120.0}
+    assert all(item["pricing_eligible"] for item in decision["comparables"])
+    assert all(item["unit_norm"] == "no" for item in decision["comparables"])
 
 
 def test_bench_special_feature_requires_its_own_comparable_cohort():
@@ -297,7 +334,50 @@ def test_bench_special_feature_requires_its_own_comparable_cohort():
         "attributes": {"length_mm": 1800.0, "features": []},
     } for rate in (2000, 2100, 2200)]
     decision = price_from_comparables(
-        attrs, matches, approved_families={"bench"}
+        attrs, matches, approved_families={"bench"}, always_estimate=False
     )
-    assert decision["status"] == "manual_review"
+    assert decision["status"] == "abstained"
     assert any("perforated" in reason for reason in decision["review_reasons"])
+
+
+def test_real_engine_returns_numeric_estimate_for_every_supported_family():
+    import config
+    from pricing_engine import get_engine
+
+    if not Path(config.DATA_PATH).exists():
+        pytest.skip("real dataset not present")
+    engine = get_engine()
+    cases = [
+        ("planter", "Mild steel planter 1000 x 500 x 500mm", {
+            "length_mm": 1000, "width_mm": 500, "height_mm": 500,
+        }),
+        ("litter bin", "Stainless steel litter bin 60 litre", {
+            "capacity_l": 60,
+        }),
+        ("recycle bin", "Mild steel recycle bin 120 litre", {
+            "capacity_l": 120,
+        }),
+        ("bench", "Precast bench 1800mm long", {"length_mm": 1800}),
+        ("bollard", "Stainless steel bollard 150mm dia x 900mm high", {
+            "diameter_mm": 150, "height_mm": 900,
+        }),
+        ("bike rack", "Mild steel bike rack 1000mm long", {
+            "length_mm": 1000,
+        }),
+    ]
+    for family, description, specs in cases:
+        result = engine.predict_price(description, pricing_context={
+            "product_family": family,
+            "unit": "no",
+            "scope": "supply only",
+            "material": "mild steel",
+            **specs,
+        })
+        assert result["status"] == "priced", family
+        assert result["predicted_unit_price"] > 0, family
+        assert result["price_interval"]["low"] > 0, family
+        assert result["price_interval"]["high"] >= result["predicted_unit_price"], family
+
+    unknown = engine.predict_price("Completely custom fabricated item")
+    assert unknown["status"] == "priced"
+    assert unknown["predicted_unit_price"] > 0

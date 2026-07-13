@@ -53,7 +53,7 @@ def main() -> int:
     if args.enforce_production:
         failed = [
             item["family"] for item in report["families"]
-            if item["approved_for_automatic_pricing"]
+            if item["release_gate_approved"]
             and not item["release_gate_passed"]
         ]
         return 1 if failed or stale_snapshot else 0

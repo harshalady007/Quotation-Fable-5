@@ -68,10 +68,52 @@ class SimilaritySearcher:
         # matching can promote items that raw text similarity underrates
         # (terse descriptions score badly on TF-IDF even when they are the
         # best pricing comparables).
-        pool = min(len(self.df), max(top_k * 10, 200))
-        candidates = text_sims.argsort()[::-1][:pool]
-
         input_type = input_attrs.get("item_type")
+        input_unit = input_attrs.get("unit_hint")
+        pool = min(len(self.df), max(top_k * 10, 200))
+        ranked_indices = [int(idx) for idx in text_sims.argsort()[::-1]]
+        candidates = ranked_indices[:pool]
+        selected_indices = set(candidates)
+        reserve_indices: set[int] = set()
+
+        def append_reserve(predicate) -> None:
+            added = 0
+            seen_lineages = set()
+            for idx in ranked_indices:
+                row = self.df.iloc[idx]
+                if (not bool(row.get("pricing_eligible", True))
+                        or not _safe_num(row.get("rate"))
+                        or not row.get("unit_norm")
+                        or not predicate(idx, row)):
+                    continue
+                lineage = row.get("source_group") or row.get("record_id") or idx
+                if lineage in seen_lineages:
+                    continue
+                seen_lineages.add(lineage)
+                reserve_indices.add(idx)
+                if idx not in selected_indices:
+                    candidates.append(idx)
+                    selected_indices.add(idx)
+                added += 1
+                if added >= config.PRICING_MAX_MATCHES:
+                    break
+
+        # Keep a small reserve outside the text-only top-200 window. This
+        # guarantees coherent same-family/unit evidence when it exists and at
+        # least some quality-eligible evidence for the universal fallback.
+        if input_type and input_unit:
+            append_reserve(lambda idx, row: (
+                self.item_attrs[idx].get("item_type") == input_type
+                and row.get("unit_norm") == input_unit
+            ))
+        if input_type:
+            append_reserve(lambda idx, row: (
+                self.item_attrs[idx].get("item_type") == input_type
+            ))
+        if input_unit:
+            append_reserve(lambda idx, row: row.get("unit_norm") == input_unit)
+        append_reserve(lambda idx, row: True)
+
         results = []
         for idx in candidates:
             comparison = compare_attributes(input_attrs, self.item_attrs[idx])
@@ -110,6 +152,7 @@ class SimilaritySearcher:
                 final *= config.SEATING_MISMATCH_PENALTY
             row = self.df.iloc[idx]
             results.append({
+                "_dataset_index": idx,
                 "item_type": item_type,
                 "subtype": item_subtype,
                 "scope": self.item_attrs[idx].get("scope"),
@@ -152,6 +195,17 @@ class SimilaritySearcher:
 
         results.sort(key=lambda r: r["similarity_score"], reverse=True)
         candidate_results = results[:config.PRICING_CANDIDATE_RESULTS]
+        retained_indices = {
+            item["_dataset_index"] for item in candidate_results
+        }
+        candidate_results.extend(
+            item for item in results
+            if item["_dataset_index"] in reserve_indices
+            and item["_dataset_index"] not in retained_indices
+        )
+        for item in candidate_results:
+            item.pop("_dataset_index", None)
+
         for rank, r in enumerate(candidate_results, 1):
             r["rank"] = rank
         display_results = candidate_results[:top_k]

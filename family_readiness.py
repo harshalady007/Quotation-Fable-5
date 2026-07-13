@@ -12,14 +12,16 @@ import pandas as pd
 import config
 from context_readiness import build_context_readiness
 from pricing_dataset import load_pricing_dataset
-from production_pricing import (APPROVED_AUTO_FAMILIES, FAMILY_REQUIRED_FIELDS,
-                                PRICING_ENGINE_VERSION,
+from production_pricing import (APPROVED_AUTO_FAMILIES,
+                                ESTIMATE_ENABLED_FAMILIES,
+                                FAMILY_REQUIRED_FIELDS,
+                                PRICING_ENGINE_VERSION, PRICING_POLICY,
                                 SUPPORTED_INPUT_FAMILIES, family_contract,
                                 price_from_comparables)
 from similarity_search import SimilaritySearcher
 
 
-READINESS_SCHEMA_VERSION = 3
+READINESS_SCHEMA_VERSION = 4
 
 
 def dataset_fingerprint(dataset: pd.DataFrame) -> str:
@@ -176,7 +178,8 @@ def evaluate_family_readiness(data_path: str | None = None,
             if match.get("source_group") != row.get("source_group")
         ]
         decision = price_from_comparables(
-            search["input_attributes"], candidates, approved_families={family}
+            search["input_attributes"], candidates,
+            approved_families={family}, always_estimate=False,
         )
         if decision["status"] != "priced":
             item["refusals"].update(decision["review_reasons"])
@@ -201,7 +204,8 @@ def evaluate_family_readiness(data_path: str | None = None,
         metrics = {
             "family": family,
             "status": "not_ready",
-            "approved_for_automatic_pricing": family in APPROVED_AUTO_FAMILIES,
+            "release_gate_approved": family in APPROVED_AUTO_FAMILIES,
+            "estimate_enabled": family in ESTIMATE_ENABLED_FAMILIES,
             "rows": int(item["rows"]),
             "quality_eligible_rows": int(item["quality_eligible_rows"]),
             "complete_targets": complete,
@@ -249,9 +253,12 @@ def evaluate_family_readiness(data_path: str | None = None,
     return {
         "schema_version": READINESS_SCHEMA_VERSION,
         "pricing_version": PRICING_ENGINE_VERSION,
+        "pricing_policy": PRICING_POLICY,
         "dataset_fingerprint": dataset_fingerprint(dataset),
         "dataset_rows": int(len(dataset)),
         "approved_auto_families": sorted(APPROVED_AUTO_FAMILIES),
+        "release_gate_approved_families": sorted(APPROVED_AUTO_FAMILIES),
+        "estimate_enabled_families": sorted(ESTIMATE_ENABLED_FAMILIES),
         "gate": {
             "minimum_priced_holdouts": config.PRODUCTION_GATE_MIN_CASES,
             "minimum_priced_quote_groups": config.V2_GATE_MIN_QUOTE_GROUPS,

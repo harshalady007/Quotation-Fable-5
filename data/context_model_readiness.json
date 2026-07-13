@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "algorithm_version": "cohort-residual-ridge-v1",
-  "pricing_version": "3.2.0-shadow",
-  "dataset_fingerprint": "2187b0b8bc5a2152add7",
+  "pricing_version": "3.3.0-universal-estimate",
+  "dataset_fingerprint": "263330da067630e1bf13",
   "mode": "offline_shadow",
   "approved_adjustments": [],
   "implemented_adjustments": [],

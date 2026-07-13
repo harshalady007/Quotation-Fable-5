@@ -14,7 +14,7 @@ from context_readiness import ContextReadinessError
 from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
 from family_readiness import load_readiness_snapshot
-from production_pricing import APPROVED_AUTO_FAMILIES, family_contract
+from production_pricing import family_contract
 from similarity_search import SearchError
 
 st.set_page_config(page_title="Quotation Pricing Bot", page_icon="💰", layout="wide")
@@ -24,12 +24,10 @@ st.caption(
     "historical quotation items, compares pricing attributes like an "
     "estimator, and predicts a unit price."
 )
-if not APPROVED_AUTO_FAMILIES:
-    st.warning(
-        "Automatic pricing is paused because no family currently passes the "
-        "quotation-lineage validation gate. Comparables remain available for "
-        "manual estimator review."
-    )
+st.info(
+    "Numeric estimates are enabled for every supported family. Confidence, "
+    "evidence tier and price intervals show when historical validation is weak."
+)
 
 
 @st.cache_resource(show_spinner="Loading and indexing the quotation dataset...")
@@ -75,11 +73,11 @@ description = st.text_area(
 
 st.subheader("Confirmed pricing details")
 f1, f2, f3, f4 = st.columns(4)
-family = f1.selectbox("Product family *", ["", "planter", "litter bin",
+family = f1.selectbox("Product family (recommended)", ["", "planter", "litter bin",
                                             "recycle bin", "bench", "bollard",
                                             "bike rack"])
-unit = f2.selectbox("Unit *", ["", "no", "m", "m2", "set"])
-scope = f3.selectbox("Commercial scope *", ["", "supply only",
+unit = f2.selectbox("Unit (recommended)", ["", "no", "m", "m2", "set"])
+scope = f3.selectbox("Commercial scope (recommended)", ["", "supply only",
                                               "supply and delivery",
                                               "supply and install"])
 civil = f4.selectbox("Civil works", ["", "excluded", "included"])
@@ -105,7 +103,8 @@ if readiness_item:
         )
     else:
         st.info(
-            f"{family} remains in V3 shadow/manual review. "
+            f"{family} returns numeric estimates; historical validation remains "
+            "in V3 shadow. "
             + "; ".join(readiness_item.get("release_gate_failures", []))
         )
 if family:
@@ -131,7 +130,7 @@ if family:
     except ContextModelEvaluationError:
         st.caption("Offline context-model readiness snapshot is unavailable.")
 f5, f6, f7, f8 = st.columns(4)
-material = f5.text_input("Primary material *")
+material = f5.text_input("Primary material (recommended)")
 quantity = f6.number_input("Quantity", min_value=0.0, value=0.0)
 capacity_l = f7.number_input("Capacity (litres)", min_value=0.0, value=0.0)
 compartments = f8.number_input("Compartments / streams", min_value=0, value=0)
@@ -170,11 +169,10 @@ if st.button("Predict price", type="primary"):
         st.stop()
 
     # ---- Headline result ----
-    st.info("Automatic price issued" if result["status"] == "priced"
-            else "Manual estimator review required")
+    st.info("Price estimate issued")
     c1, c2, c3, c4 = st.columns(4)
     price = result["predicted_unit_price"]
-    c1.metric("Predicted unit price",
+    c1.metric("Estimated unit price",
               f"{price:,.2f} {result['currency']}" if price is not None else "n/a")
     c2.metric("Unit", result["unit"] or "unknown")
     c3.metric("Confidence", result["confidence"])

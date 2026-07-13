@@ -9,7 +9,8 @@ from context_readiness import (build_context_readiness,
 from data_corrections import correction_summary
 from data_quality import quality_summary
 from pricing_dataset import load_pricing_dataset
-from production_pricing import PRICING_ENGINE_VERSION, price_from_comparables
+from production_pricing import (PRICING_ENGINE_VERSION, PRICING_POLICY,
+                                price_from_comparables)
 from similarity_search import SimilaritySearcher
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,12 @@ class PricingEngine:
 
     def predict_price(self, input_description: str, top_k: int = 5,
                       pricing_context: dict | None = None) -> dict:
-        """Production pipeline: retrieve -> validate -> price or abstain.
+        """Production pipeline: retrieve -> validate -> estimate.
 
         ``pricing_context`` contains user-confirmed structured fields.  Free
-        text remains supported for backward compatibility, but missing
-        price-defining information produces a manual-review decision instead
-        of a fabricated number.
+        text remains supported for backward compatibility. Missing fields or
+        sparse evidence lower confidence and widen the interval; they no
+        longer suppress the numeric estimate.
         """
         if not input_description or not str(input_description).strip():
             raise ValueError("Please enter an item or service description.")
@@ -93,12 +94,15 @@ class PricingEngine:
         decision = price_from_comparables(search["input_attributes"], candidates)
         pricing_matches = decision["comparables"]
         pricing_ranks = {m["rank"] for m in pricing_matches}
+        pricing_by_rank = {m["rank"]: m for m in pricing_matches}
         matches = search["matches"]
         for match in candidates:
             match["used_for_pricing"] = match["rank"] in pricing_ranks
-            # Production comparables are exact-scope only; no hidden 20%
-            # conversion is applied.
-            match["scope_adjusted_rate"] = match.get("rate")
+            evidence = pricing_by_rank.get(match["rank"])
+            match["scope_adjusted_rate"] = (
+                evidence.get("scope_adjusted_rate", evidence.get("rate"))
+                if evidence else match.get("rate")
+            )
 
         warnings = list(decision["review_reasons"])
         warnings.extend(context_adjustment_warnings(
@@ -108,24 +112,28 @@ class PricingEngine:
         if quarantined_displayed:
             warnings.append(
                 f"{len(quarantined_displayed)} displayed historical match(es) "
-                "are quarantined from automatic pricing because of data-quality defects."
+                "are quarantined from the estimate calculation because of "
+                "data-quality defects."
             )
 
-        if decision["status"] == "priced":
+        if decision.get("fallback_used"):
             reasoning = (
-                f"Automatic price based on {len(pricing_matches)} validated "
-                "same-family, same-unit and same-scope historical comparables. "
-                "A robust weighted median limits the influence of individual rates."
+                f"Numeric estimate based on {len(pricing_matches)} independent, "
+                "quality-eligible historical quotation lineages using evidence "
+                f"tier '{decision.get('evidence_tier')}'. A robust weighted "
+                "median limits the influence of individual rates; the wider "
+                "interval and confidence label show the remaining uncertainty."
             )
         else:
             reasoning = (
-                "No automatic price was issued because the evidence failed one "
-                "or more production safety gates. Review the reasons and confirm "
-                "the missing specifications or historical comparables."
+                f"Numeric estimate based on {len(pricing_matches)} validated "
+                "same-family, same-unit and same-scope historical comparables. "
+                "A robust weighted median limits the influence of individual rates."
             )
 
         return {
             "pricing_version": PRICING_ENGINE_VERSION,
+            "pricing_policy": PRICING_POLICY,
             "status": decision["status"],
             "input_description": input_description,
             "input_attributes": search["input_attributes"],
@@ -136,7 +144,10 @@ class PricingEngine:
             "indicative_price": decision.get("indicative_price"),
             "price_interval": decision.get("price_interval"),
             "currency": config.DEFAULT_CURRENCY,
-            "unit": search["input_attributes"].get("unit_hint") or "unknown",
+            "unit": decision.get("estimated_unit")
+                    or search["input_attributes"].get("unit_hint")
+                    or "unknown",
+            "pricing_scope": decision.get("estimated_scope"),
             "confidence": decision["confidence"],
             "reasoning": reasoning,
             "price_basis": decision["pricing_method"],
@@ -146,12 +157,18 @@ class PricingEngine:
                 "applied": [],
                 "factor": 1.0,
             },
-            "fallback_used": False,
+            "fallback_used": bool(decision.get("fallback_used")),
+            "evidence_tier": decision.get("evidence_tier"),
+            "release_gate_approved": bool(
+                decision.get("release_gate_approved")
+            ),
             "price_source": (
-                "Production comparable engine" if decision["status"] == "priced"
-                else "Historical comparable evidence (manual review)"
+                "Universal validated-comparable estimate"
+                if decision.get("fallback_used")
+                else "Guarded validated-comparable estimate"
             ),
             "review_reasons": decision["review_reasons"],
+            "estimate_warnings": decision["review_reasons"],
             "matches": matches,
             "weak_matches": search["weak_matches"],
             "warnings": warnings,

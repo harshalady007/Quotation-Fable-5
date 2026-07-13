@@ -90,9 +90,11 @@ def _items(price: str = "100.00") -> list[dict]:
             "quantity": "1.2500",
             "unit_price": price,
             "pricing_snapshot": {
-                "pricing_version": "3.2.0-shadow",
-                "status": "manual_review",
-                "predicted_unit_price": None,
+                "pricing_version": "3.3.0-universal-estimate",
+                "pricing_policy": "always_estimate",
+                "status": "priced",
+                "predicted_unit_price": float(price),
+                "confidence": "Low",
             },
         },
         {
