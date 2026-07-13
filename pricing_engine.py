@@ -116,9 +116,12 @@ class PricingEngine:
                     "but should be verified."
                 )
         if search["input_attributes"].get("scope_assumed"):
+            assumed = search["input_attributes"].get("scope")
+            hint = (" (free-standing/movable items carry no installation work)"
+                    if assumed == "supply and delivery" else "")
             warnings.append(
-                "No work scope stated in the input; assumed 'supply and "
-                "install' by default. Mention e.g. 'supply only' to override."
+                f"No work scope stated in the input; assumed '{assumed}'"
+                f"{hint}. Mention e.g. 'supply only' to override."
             )
         if search["weak_matches"]:
             warnings.append(

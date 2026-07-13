@@ -26,8 +26,14 @@ SYSTEM_PROMPT = (
     "Be deterministic: the same input must always produce the same price. "
     "Start from the given statistical anchor and apply explicit, quantified "
     "adjustments only for attribute differences that are actually stated. "
-    "You may go outside the historical rate range when the differences "
-    "clearly justify it - state the multiplier you applied. "
+    "You may go outside the historical rate range only when the matches are "
+    "sparse or clearly dissimilar products - state the multiplier you "
+    "applied. "
+    "COMPONENT RULE: when only a component differs (e.g. granite legs, an "
+    "SS316 frame, different slats), adjust ONLY that component's share of "
+    "cost (typically 10-30% of the item); NEVER apply whole-item material "
+    "multipliers for component-level differences, and never stack several "
+    "component multipliers into a large combined factor. "
     "Typical cost relativities to apply: stainless steel fabrication is "
     "roughly 2.5-3x mild or galvanized steel; SS316 is ~1.15x SS304; "
     "COMPANY RULE: supply and installation is exactly 20% more expensive "
@@ -64,6 +70,18 @@ def scope_adjusted_rate(rate, item_scope, input_scope):
 
 def _effective_rate(m):
     return m.get("scope_adjusted_rate") or m.get("rate")
+
+
+def dense_band(matches) -> tuple | None:
+    """(min, max) of scope-adjusted rates when >=3 same-type comps sit in a
+    tight band (max <= 2.2x min) — the product class price is established
+    and predictions should stay inside it. None otherwise."""
+    rates = [_effective_rate(m) for m in matches if _effective_rate(m)]
+    types = {m.get("item_type") for m in matches}
+    if (len(rates) >= 3 and len(types) == 1 and None not in types
+            and max(rates) <= 2.2 * min(rates)):
+        return (min(rates), max(rates))
+    return None
 
 
 def weighted_median_rate(matches) -> float | None:
@@ -132,6 +150,16 @@ def _build_user_prompt(description, input_attrs, matches, weak_matches) -> str:
             "finish); going outside the historical range is allowed when "
             "the differences clearly justify it.",
         ]
+        band = dense_band(matches)
+        if band:
+            lines += [
+                f"PRICE BAND ESTABLISHED: {len(matches)} historical items of "
+                f"the same type price this product class between "
+                f"{band[0]:,.2f} and {band[1]:,.2f} {config.DEFAULT_CURRENCY} "
+                "(scope-adjusted). Your prediction MUST stay within this "
+                "band: component-level differences (legs, frame, slats, "
+                "finish) move the price WITHIN the band, not outside it.",
+            ]
     if weak_matches:
         lines += ["", "WARNING: All matches are weak. State this in warnings "
                       "and lower your confidence accordingly."]
@@ -255,8 +283,14 @@ def predict_price_with_deepseek(description: str, input_attrs: dict,
     # drifting response can never produce an implausible number.
     rates = [_effective_rate(m) for m in matches if _effective_rate(m)]
     if rates and result["predicted_unit_price"] is not None:
-        lo = round(min(rates) * config.PRICE_CLAMP_LOW, 2)
-        hi = round(max(rates) * config.PRICE_CLAMP_HIGH, 2)
+        band = dense_band(matches)
+        if band:
+            # Established product-class band: hold the prediction close.
+            lo = round(band[0] * 0.75, 2)
+            hi = round(band[1] * 1.25, 2)
+        else:
+            lo = round(min(rates) * config.PRICE_CLAMP_LOW, 2)
+            hi = round(max(rates) * config.PRICE_CLAMP_HIGH, 2)
         p = result["predicted_unit_price"]
         if p < lo or p > hi:
             result["predicted_unit_price"] = min(max(p, lo), hi)

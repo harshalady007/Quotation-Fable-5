@@ -1,5 +1,7 @@
 """Hybrid similarity search: TF-IDF text similarity + attribute scoring."""
 
+import re
+
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -51,9 +53,15 @@ class SimilaritySearcher:
         clean_query = normalize_text(query)
         input_attrs = extract_attributes(clean_query)
         # Estimating default: when the input does not state a work scope,
-        # assume supply and installation (dataset items keep their own scope).
+        # assume supply and installation (dataset items keep their own
+        # scope) — unless the item is explicitly free-standing/movable, in
+        # which case there is no installation work to price.
         if input_attrs.get("scope") is None:
-            input_attrs["scope"] = "supply and install"
+            if re.search(r"\bfree[\s\-]*standing\b|\bmovable\b|\bportable\b",
+                         clean_query):
+                input_attrs["scope"] = "supply and delivery"
+            else:
+                input_attrs["scope"] = "supply and install"
             input_attrs["scope_assumed"] = True
 
         query_vec = self.vectorizer.transform([clean_query])

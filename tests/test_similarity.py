@@ -230,6 +230,30 @@ def test_install_price_is_20pct_above_supply_only(monkeypatch):
     assert abs(p_install - p_supply * 1.2) < 0.01 or p_install == p_supply
 
 
+def test_freestanding_defaults_to_supply_and_delivery():
+    searcher = SimilaritySearcher(clean_dataset(SAMPLE))
+    out = searcher.search("granite bench polished finish, free standing, "
+                          "L 2000 x W 540 x H 777mm", top_k=2)
+    assert out["input_attributes"]["scope"] == "supply and delivery"
+    assert out["input_attributes"]["scope_assumed"] is True
+
+
+def test_dense_band_detection():
+    from deepseek_pricing import dense_band
+
+    def m(rate, t="bench"):
+        return {"rate": rate, "similarity_score": 0.5, "item_type": t}
+
+    # Tight same-type cluster -> band.
+    assert dense_band([m(4100), m(5059), m(3856)]) == (3856, 5059)
+    # Too spread out -> no band.
+    assert dense_band([m(221), m(430), m(1619)]) is None
+    # Mixed / unknown types -> no band.
+    assert dense_band([m(4100), m(5059), m(3856, t=None)]) is None
+    # Too few comps -> no band.
+    assert dense_band([m(4100), m(5059)]) is None
+
+
 def test_real_dataset_if_available():
     import config
     from data_loader import load_dataset
