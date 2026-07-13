@@ -120,6 +120,7 @@ class SimilaritySearcher:
                 "amount": _safe_num(row.get("amount")),
                 "category": _safe_str(row.get("category")) or _safe_str(row.get("section")),
                 "source": _safe_str(row.get("source")),
+                "date": _safe_str(row.get("date")),
                 "similarity_score": round(final, 4),
                 "text_similarity": round(text_score, 4),
                 "attribute_score": comparison["attribute_score"],

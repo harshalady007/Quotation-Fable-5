@@ -121,6 +121,7 @@
           <thead><tr>
             <th>#</th><th>Priced&nbsp;on</th><th>Similarity</th><th>Description</th><th>Unit</th>
             <th>Qty</th><th>Rate</th><th>Amount</th><th>Category / scope</th>
+            <th>Source file</th><th>Date</th>
             <th>Matched</th><th>Mismatched</th>
           </tr></thead>
           <tbody id="matches"></tbody>
@@ -223,6 +224,8 @@ function render(d) {
           ? `<br><small>≈${fmt(m.scope_adjusted_rate)} scope-adj</small>` : ""}</td>
       <td class="num">${fmt(m.amount)}</td>
       <td>${esc(m.category || "")}</td>
+      <td class="desc" style="max-width:160px;word-break:break-all"><small>${esc(m.source || "—")}</small></td>
+      <td style="white-space:nowrap"><small>${esc(m.date || "—")}</small></td>
       <td>${(m.matched_attributes || []).map(a => `<span class="tag match">${esc(a)}</span>`).join("") || "—"}</td>
       <td>${(m.mismatched_attributes || []).map(a => `<span class="tag miss">${esc(a)}</span>`).join("") || "—"}</td>
     </tr>`).join("");

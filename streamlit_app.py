@@ -122,6 +122,8 @@ if st.button("Predict price", type="primary"):
             "Rate (scope-adj)": m.get("scope_adjusted_rate") or m["rate"],
             "Amount": m["amount"] or "",
             "Category / scope": m["category"] or "",
+            "Source file": m.get("source") or "—",
+            "Date": m.get("date") or "—",
             "Matched attributes": "; ".join(m["matched_attributes"]) or "—",
             "Mismatched attributes": "; ".join(m["mismatched_attributes"]) or "—",
         })
