@@ -12,10 +12,14 @@ from cleaner import normalize_unit
 # specific phrases come before generic ones. Matching a wrong item type is
 # penalized harder than any other attribute.
 ITEM_TYPES = [
+    # Recycle bin before litter bin: "FN2 Litter Bin Recyclable Waste"
+    # must type as a recycle bin, not a general litter bin.
+    ("recycle bin", ["recycle bin", "recycled bin", "recycling bin",
+                     "recyclable waste", "recycling station",
+                     "recycle station"]),
     ("litter bin", ["litter bin", "waste bin", "trash bin", "garbage bin",
-                    "dust bin", "dustbin", "trash can", "recycling bin",
-                    "recycle bin", "recycled bin", "waste bins",
-                    "pedal bin", "bin"]),
+                    "dust bin", "dustbin", "trash can", "waste bins",
+                    "general waste", "pedal bin", "bin"]),
     ("planter", ["planter pot", "planter box", "planter", "flower pot",
                  "flower box", "plant pot", "plant box"]),
     ("bench", ["bench"]),
@@ -51,6 +55,7 @@ ITEM_TYPES = [
 # exact-type match exists (no hard score penalty between them).
 COMPATIBLE_TYPES = [
     {"handrail", "balustrade"},
+    {"recycle bin", "litter bin"},
 ]
 
 

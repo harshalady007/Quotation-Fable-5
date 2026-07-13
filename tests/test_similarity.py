@@ -131,6 +131,12 @@ def test_empty_query_rejected():
 def test_item_type_extraction():
     assert extract_attributes(normalize_text("Planter Pot FF-30"))["item_type"] == "planter"
     assert extract_attributes(normalize_text("Out Door Litter Bin"))["item_type"] == "litter bin"
+    # Recycle bins are their own type, distinct from general litter bins.
+    assert extract_attributes(normalize_text("Recycling bin, powder coated"))["item_type"] == "recycle bin"
+    assert extract_attributes(normalize_text("FN2 Litter Bin Recyclable Waste"))["item_type"] == "recycle bin"
+    assert extract_attributes(normalize_text("FN2 Litter Bin General Waste"))["item_type"] == "litter bin"
+    from attribute_extractor import types_compatible
+    assert types_compatible("recycle bin", "litter bin")
     assert extract_attributes(normalize_text("SS handrail 50mm dia"))["item_type"] == "handrail"
     assert extract_attributes(normalize_text("stainless steel plate"))["item_type"] is None
     # 'sign' must not fire inside words like 'design'.
