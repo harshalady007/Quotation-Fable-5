@@ -5,15 +5,3 @@ venv/
 .venv/
 .env
 .streamlit/secrets.toml
-
-# Estimator review exports may contain commercial context and reviewer names.
-# Only the validated correction manifest belongs in version control.
-*-context-review.csv
-*-context-review.xlsx
-*-context-review.json
-
-# V4 local workflow stores contain commercial quotations and audit identities.
-# They are runtime state, never repository fixtures.
-*.db
-*.db-wal
-*.db-shm

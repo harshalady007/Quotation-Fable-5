@@ -12,31 +12,11 @@ from cleaner import normalize_unit
 # specific phrases come before generic ones. Matching a wrong item type is
 # penalized harder than any other attribute.
 ITEM_TYPES = [
-    # Recycle bin before litter bin: "FN2 Litter Bin Recyclable Waste"
-    # must type as a recycle bin, not a general litter bin.
-    ("recycle bin", ["recycle bin", "recycled bin", "recycling bin",
-                     "recyclable waste", "recycling station",
-                     "recycle station"]),
     ("litter bin", ["litter bin", "waste bin", "trash bin", "garbage bin",
-                    "dust bin", "dustbin", "trash can", "waste bins",
-                    "general waste", "pedal bin", "bin"]),
-    # Components must be recognized before their parent product. A planter
-    # extension or a metal edge beside a balustrade is not a complete item.
-    ("planter component", ["planter side wall extension",
-                           "planter sidewall extension",
-                           "structure for planter", "planter structure"]),
+                    "dust bin", "dustbin", "trash can", "recycling bin"]),
     ("planter", ["planter pot", "planter box", "planter", "flower pot",
                  "flower box", "plant pot", "plant box"]),
-    ("metal component", ["metal edge at balustrade", "metal edge"]),
-    ("raw material", ["raw material supply", "raw material"]),
-    ("cladding", ["cladding with coping", "metal cladding", "cladding"]),
-    ("sun lounger", ["sun lounger", "sunbed", "sun bed", "pool lounger",
-                     "wet lounger", "lounger"]),
-    # Table precedes chair/bench because picnic sets commonly mention both.
-    ("table", ["picnic table", "coffee table", "table set", "table"]),
-    ("bench", ["bench", "seater", "feature seating"]),
-    ("chair", ["lifeguard chair", "chair"]),
-    ("cabinet", ["towel cabinet", "cabinet"]),
+    ("bench", ["bench"]),
     ("bollard", ["bollard"]),
     ("bike rack", ["bike rack", "cycle stand", "bicycle stand", "cycle rack",
                    "bike stand", "bicycle rack"]),
@@ -50,6 +30,7 @@ ITEM_TYPES = [
     ("fence", ["fence", "fencing"]),
     ("gate", ["gate"]),
     ("signage", ["signage", "sign board", "wayfinding", "sign"]),
+    ("table", ["picnic table", "table"]),
     ("drinking fountain", ["drinking fountain", "water fountain"]),
     ("tree grate", ["tree grate", "tree grille", "tree guard"]),
     ("play equipment", ["play equipment", "playground equipment", "swing",
@@ -68,7 +49,6 @@ ITEM_TYPES = [
 # exact-type match exists (no hard score penalty between them).
 COMPATIBLE_TYPES = [
     {"handrail", "balustrade"},
-    {"recycle bin", "litter bin"},
 ]
 
 
@@ -81,22 +61,12 @@ def types_compatible(a, b) -> bool:
 # Add-on features that transform an item's price (a planter WITH integrated
 # seating is a different product from a plain planter box).
 ADDON_FEATURES = [
-    # Generic "bench"/"seat" terms are handled contextually below. Treating
-    # them as add-ons marked every standalone bench as integrated seating.
-    ("integrated seating", ["integrated seating", "integrated seat",
-                            "integrated bench", "with seater", "with seating",
-                            "seating support"]),
+    ("integrated seating", ["seater", "seating", "seat", "bench"]),
     ("lighting", ["led", "lighting", "illuminated", "light fitting",
                   "spotlight", "floodlight", "solar light"]),
     ("irrigation", ["irrigation", "drain fitting", "drainage"]),
     ("water feature", ["water feature", "fountain"]),
     ("cladding", ["cladded", "cladding"]),
-    ("backrest", ["backrest", "back rest"]),
-    ("armrest", ["armrest", "arm rest"]),
-    ("perforated", ["perforated", "perforation", "perforations"]),
-    ("pedal", ["pedal"]),
-    ("liner", ["liner", "inner bin"]),
-    ("wheels", ["wheel", "wheels", "wheeled"]),
 ]
 
 _FEATURE_PATTERNS = [
@@ -110,35 +80,13 @@ _ITEM_TYPE_PATTERNS = [
 ]
 
 MATERIALS = [
-    # Galvanized is a finish/coating, not a substrate.
-    "stainless steel", "mild steel", "carbon steel", "aluminium",
+    "stainless steel", "mild steel", "carbon steel", "galvanized", "aluminium",
     "composite bamboo", "bamboo", "corten",
-    # Common quotation wording that still describes an existing canonical
-    # substrate.  Keep the alias in the matcher, then normalize below so
-    # commercial groups are not fragmented into "iroko" versus "wood" or
-    # "hot gi" versus "steel".
-    "hot galvanized", "hot gi", "galvanized iron", "galvanised iron",
-    "iroko", "wooden", "wpc",
     "concrete", "uhpc", "precast", "timber", "wood", "hardwood", "glass",
     "gypsum", "pvc", "hdpe", "upvc", "copper", "brass", "bronze", "cast iron",
     "iron", "granite", "marble", "ceramic", "porcelain", "rubber", "epdm",
     "frp", "grp", "acrylic", "polycarbonate", "fabric", "steel",
 ]
-
-MATERIAL_ALIASES = {
-    "hot galvanized": "steel",
-    "hot gi": "steel",
-    "galvanized iron": "steel",
-    "galvanised iron": "steel",
-    "iroko": "wood",
-    "wooden": "wood",
-    "wpc": "wood",
-}
-
-# Word-boundary patterns so substrings never false-match ("fabricated"
-# must not read as material "fabric", "waterproof" is not location "roof").
-_MATERIAL_PATTERNS = [(m, re.compile(r"\b" + re.escape(m) + r"\b"))
-                      for m in MATERIALS]
 
 FINISHES = [
     "brushed", "polished", "painted", "powder coated", "galvanized",
@@ -195,61 +143,26 @@ LOCATIONS = [
 _UNIT_TOKENS = (r"no|nos|each|item|set|pair|lm|rm|rmt|m2|sqm|m3|cum|kg|ton|"
                 r"day|hour|hr|ls|lump sum|running metre|linear metre|"
                 r"metre|meter|m")
-# Only explicit pricing-basis language is accepted. Bare tokens are unsafe:
-# "ITEM NO J", "table set" and "2 m long" do not mean the quotation unit is
-# respectively no/set/metre.
-PER_UNIT_RE = re.compile(rf"\bper\s+(?:\d+(?:\.\d+)?\s+)?({_UNIT_TOKENS})\b")
-UNIT_LABEL_RE = re.compile(rf"\b(?:unit|uom|unit of measure)\s*[:=\-]\s*({_UNIT_TOKENS})\b")
+# An explicit "per <unit>" states the pricing basis and always wins over a
+# bare unit word that may just be counting parts ("11 no.s of cables").
+PER_UNIT_RE = re.compile(rf"\bper\s+({_UNIT_TOKENS})\b")
+UNIT_WORDS = re.compile(rf"\b({_UNIT_TOKENS})\b")
 
 _NUM = r"(\d+(?:\.\d+)?)"
-_NUM_NC = r"\d+(?:\.\d+)?"
-_DIM_NUM = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
 DIA_RE = re.compile(rf"(?:{_NUM}\s*mm\s*dia|dia\.?\s*{_NUM}\s*mm|dia\.?\s*{_NUM}|"
                     rf"\bd\s?{_NUM}(?=\s?[\*x]|\s?mm)|{_NUM}mm\s+dia)")
 THICK_RE = re.compile(rf"{_NUM}\s*mm\s*thick|thick(?:ness)?[:\s]*{_NUM}\s*mm|"
                       rf"\*\s*{_NUM}\s*mm(?:\s|$)")
-# Dimension chains in the source workbook use both prefix and suffix axes:
-# ``L1800 xW530 xH530``, ``1753 L x 533 W x 787mm H`` and plain
-# ``1500x400x450mm`` are all common.  Match complete components first and
-# interpret their labels in ``_extract_dimension_chain`` rather than relying
-# on capture-group position.
-_DIM_AXIS = r"(?:length|width|wide|height|high|diameter|dia|[lwhd])"
-_DIM_LABEL = rf"(?:{_DIM_AXIS}|\(\s*{_DIM_AXIS}\s*\))"
-_DIM_VALUE = rf"{_DIM_NUM}(?:\s*/\s*{_DIM_NUM})?"
-_DIM_COMPONENT = (
-    rf"(?:{_DIM_LABEL}\s*[:.]?\s*)?{_DIM_VALUE}\s*(?:mm|m)?\s*"
-    rf"(?:{_DIM_LABEL})?"
-)
-DIM_CHAIN_RE = re.compile(
-    rf"(?P<first>{_DIM_COMPONENT})\s*[x\*]\s*"
-    rf"(?P<second>{_DIM_COMPONENT})"
-    rf"(?:\s*[x\*]\s*(?P<third>{_DIM_COMPONENT}))?"
-)
-DIM_COMPONENT_RE = re.compile(
-    rf"^\s*(?:(?P<prefix>{_DIM_LABEL})\s*[:.]?\s*)?"
-    rf"(?P<value>{_DIM_VALUE})\s*(?P<unit>mm|m)?\s*"
-    rf"(?P<suffix>{_DIM_LABEL})?\s*$"
+# Dimension chains: "1200x600mm", "l 17770 x w 3050 x h 800mm",
+# "d3063 x h800mm" — any of l/w/h/d may prefix each number.
+_DIM_PREFIX = r"(?:\b[lwhd][\s:.]*)?"
+DIMS_RE = re.compile(
+    rf"{_DIM_PREFIX}{_NUM}\s*(?:mm)?\s*[x\*]\s*{_DIM_PREFIX}{_NUM}\s*(?:mm)?"
+    rf"(?:\s*[x\*]\s*{_DIM_PREFIX}{_NUM}\s*(?:mm)?)?"
 )
 LEN_RE = re.compile(rf"\b(?:l|length)[\s:.]+{_NUM}\s*(mm|m)\b|{_NUM}\s*(m|mm)\s+(?:long|length)")
-# Developed lengths such as "L 7000+1120 x 600 x 450mm" occur on shaped
-# benches. Treating only the last 1120mm as length creates a catastrophic size
-# error, so the explicit segments are summed.
-SUM_LENGTH_RE = re.compile(
-    r"\b(?:l|length)[\s:.]*(\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?)+)"
-    r"\s*(?:mm)?\s*[x\*]"
-)
 HEIGHT_RE = re.compile(rf"{_NUM}\s*mm\s*h\b|\bh[\s:.]+{_NUM}\s*mm|height[:\s]*{_NUM}")
 SIZE_TOKEN_RE = re.compile(rf"{_NUM}\s*mm\b")
-CAPACITY_L_RE = re.compile(
-    rf"\b{_NUM}\s*(?:l|ltr|ltrs|litre|litres|liter|liters)\b"
-)
-CAPACITY_M3_RE = re.compile(rf"\b{_NUM}\s*(?:m3|cbm|cum)\b")
-COMPARTMENT_RE = re.compile(
-    r"\b(?:(single|double|dual|triple|quadruple)|([1-9]\d*))\s+compartment[s]?\b"
-)
-STREAM_RE = re.compile(
-    r"\b(?:(single|double|dual|triple|quadruple)|([1-9]\d*))\s+(?:waste\s+)?stream[s]?\b"
-)
 
 
 # Scopes whose rates are convertible into each other via the company's
@@ -270,66 +183,6 @@ def detect_scope(text: str) -> str | None:
     return None
 
 
-def detect_subtype(text: str, attrs: dict) -> str | None:
-    """Extract a conservative, family-specific functional subtype.
-
-    Subtypes are emitted only from explicit wording or a defining feature;
-    material remains a separate price driver.  Unknown is safer than forcing
-    a record into the wrong commercial class.
-    """
-    family = attrs.get("item_type")
-    features = set(attrs.get("features") or [])
-    compartments = attrs.get("compartments")
-
-    if family == "planter":
-        return "integrated seating" if "integrated seating" in features else "standalone planter"
-    if family == "bench":
-        if re.search(r"\btree\s+pit\b|\btree\s+bench\b|\baround\s+(?:a\s+)?tree\b", text):
-            return "tree bench"
-        if re.search(r"\b(?:galet|barrel|monolith)\b|\bfeature\s+seating\b", text):
-            return "sculptural bench"
-        if re.search(r"\b(?:l|u|s)[\s\-]*shape(?:d)?\b|\btriangular\b|"
-                     r"\b(?:curved|curvilinear|circular|semicircular|"
-                     r"semi[\s\-]*circular)\b|\bbench\s+arch\b", text):
-            return "shaped bench"
-        if re.search(r"\blinear\s+bench\b", text):
-            return "linear bench"
-        if re.search(r"\bwithout\s+back(?:rest)?\b|\bbackless\b", text):
-            return "backless bench"
-        if "backrest" in features or re.search(r"\bwith\s+back(?:rest)?\b", text):
-            return "bench with backrest"
-        return None
-    if family in {"litter bin", "recycle bin"}:
-        if compartments and compartments > 1:
-            return "multi-stream bin"
-        if "pedal" in features:
-            return "pedal bin"
-        if re.search(r"\bwall[\s\-]*mounted\b", text):
-            return "wall-mounted bin"
-        if "wheels" in features or re.search(r"\bwheeled\b", text):
-            return "mobile bin"
-        return None
-    if family == "bollard":
-        if re.search(r"\bremovable\b|\bdemountable\b", text):
-            return "removable bollard"
-        if re.search(r"\bretractable\b|\btelescopic\b", text):
-            return "retractable bollard"
-        if re.search(r"\bflexible\b", text):
-            return "flexible bollard"
-        if attrs.get("mobility") == "fixed":
-            return "fixed bollard"
-        return None
-    if family == "bike rack":
-        if re.search(r"\bwall[\s\-]*mounted\b|\bvertical\s+(?:bike|cycle)", text):
-            return "wall-mounted rack"
-        if re.search(r"\bwave\s+rack\b|\bspiral\s+rack\b", text):
-            return "multi-bike rack"
-        if re.search(r"\bsheffield\b|\bhoop\b|\bu[\s\-]*rack\b", text):
-            return "hoop rack"
-        return None
-    return None
-
-
 def _first_number(match) -> float | None:
     for g in match.groups():
         if g is not None:
@@ -340,102 +193,6 @@ def _first_number(match) -> float | None:
     return None
 
 
-def _dimension_axis(value: str | None) -> str | None:
-    """Return a canonical axis for a dimension label."""
-    if not value:
-        return None
-    value = value.strip().strip("()").strip()
-    return {
-        "l": "length_mm", "length": "length_mm",
-        "w": "width_mm", "wide": "width_mm", "width": "width_mm",
-        "h": "height_mm", "high": "height_mm", "height": "height_mm",
-        "d": "diameter_mm", "dia": "diameter_mm",
-        "diameter": "diameter_mm",
-    }.get(value)
-
-
-def _extract_dimension_chain(text: str) -> tuple[re.Match | None, dict, list[float]]:
-    """Parse the strongest 2/3-part dimension chain without guessing axes.
-
-    Explicit L/W/H/D labels win.  Unlabelled values use conventional
-    L x W x H order.  A trailing unit applies to preceding unitless values,
-    which correctly interprets both ``2 x .5 x .45m`` and
-    ``2000 x 500 x 450mm``.
-    """
-    matches = list(DIM_CHAIN_RE.finditer(text))
-    if not matches:
-        return None, {}, []
-
-    def match_priority(candidate: re.Match) -> tuple:
-        # Product dimensions are commonly preceded by Size/Dimensions.  This
-        # must outrank an earlier component profile such as a bench leg's
-        # 40x50mm section.  Explicit axes and a 3-part chain are the next
-        # strongest evidence; later occurrence is the final tie-breaker.
-        before = text[max(0, candidate.start() - 32):candidate.start()]
-        size_context = bool(re.search(
-            r"\b(?:overall\s+)?(?:size|dimensions?)\s*[:=\-]?\s*$", before
-        ))
-        explicit_axes = 0
-        component_count = 0
-        for name in ("first", "second", "third"):
-            raw = candidate.group(name)
-            if raw is None:
-                continue
-            component_count += 1
-            parsed = DIM_COMPONENT_RE.fullmatch(raw)
-            if parsed and (parsed.group("prefix") or parsed.group("suffix")):
-                explicit_axes += 1
-        return size_context, explicit_axes, component_count, candidate.start()
-
-    match = max(matches, key=match_priority)
-
-    parts = []
-    for name in ("first", "second", "third"):
-        raw = match.group(name)
-        if raw is None:
-            continue
-        parsed = DIM_COMPONENT_RE.fullmatch(raw)
-        if not parsed:  # Defensive: the outer and inner patterns must agree.
-            return None, {}, []
-        parts.append({
-            "value": max(
-                float(value.replace(",", ""))
-                for value in parsed.group("value").split("/")
-            ),
-            "unit": parsed.group("unit"),
-            "axis": _dimension_axis(
-                parsed.group("prefix") or parsed.group("suffix")
-            ),
-        })
-
-    shared_unit = next(
-        (part["unit"] for part in reversed(parts) if part["unit"]), "mm"
-    )
-    for part in parts:
-        unit = part["unit"] or shared_unit
-        if unit == "m":
-            part["value"] *= 1000
-
-    dimensions = {}
-    conventional_axes = ("length_mm", "width_mm", "height_mm")
-    claimed = {part["axis"] for part in parts if part["axis"]}
-    for position, part in enumerate(parts):
-        axis = part["axis"]
-        if axis is None:
-            preferred = conventional_axes[position]
-            if preferred not in claimed and preferred not in dimensions:
-                axis = preferred
-            else:
-                axis = next(
-                    (candidate for candidate in conventional_axes
-                     if candidate not in claimed and candidate not in dimensions),
-                    None,
-                )
-        if axis and axis not in dimensions:
-            dimensions[axis] = part["value"]
-    return match, dimensions, [part["value"] for part in parts]
-
-
 def extract_attributes(text: str) -> dict:
     """Extract a pricing-attribute dictionary from normalized text.
 
@@ -443,13 +200,11 @@ def extract_attributes(text: str) -> dict:
     """
     t = text or ""
     attrs = {
-        "item_type": None, "subtype": None,
+        "item_type": None,
         "material": None, "finish": None, "grade": None, "scope": None,
         "category": None, "location": None, "unit_hint": None, "brand": None,
         "diameter_mm": None, "thickness_mm": None, "length_mm": None,
-        "width_mm": None, "depth_mm": None, "height_mm": None,
-        "capacity_l": None, "compartments": None, "mobility": None,
-        "civil_works": None, "dimensions": None, "sizes_mm": [],
+        "height_mm": None, "dimensions": None, "sizes_mm": [],
     }
 
     for canonical, pattern in _ITEM_TYPE_PATTERNS:
@@ -457,38 +212,20 @@ def extract_attributes(text: str) -> dict:
             attrs["item_type"] = canonical
             break
 
-    features = {name for name, pattern in _FEATURE_PATTERNS if pattern.search(t)}
-    if re.search(r"\bwithout\s+back(?:rest)?\b|\bbackless\b", t):
-        features.discard("backrest")
-    if (attrs["item_type"] == "planter"
-            and re.search(r"\b(?:seater|seating|seat|bench)\b", t)):
-        features.add("integrated seating")
-    attrs["features"] = sorted(features)
+    attrs["features"] = sorted({name for name, pattern in _FEATURE_PATTERNS
+                                if pattern.search(t)})
 
     # Primary material = the one mentioned EARLIEST in the text ("mild steel
     # posts ... stainless steel cables" is a mild steel item). Overlapping
     # names resolve naturally: "stainless steel" starts before its "steel".
     best_pos = None
-    materials_all = []
-    for m, pattern in _MATERIAL_PATTERNS:
-        hit = pattern.search(t)
-        if hit:
-            materials_all.append((hit.start(), m))
-        if hit and (best_pos is None or hit.start() < best_pos):
-            best_pos = hit.start()
-            attrs["material"] = MATERIAL_ALIASES.get(m, m)
-    attrs["materials_all"] = list(dict.fromkeys(
-        MATERIAL_ALIASES.get(m, m) for _, m in sorted(materials_all)
-    ))
-    wood_materials = {"wood", "timber", "hardwood"}
-    if (attrs["item_type"] == "bench"
-            and attrs["material"] not in wood_materials
-            and wood_materials.intersection(attrs["materials_all"])):
-        features.add("wood accent")
-        attrs["features"] = sorted(features)
+    for m in MATERIALS:
+        pos = t.find(m)
+        if pos >= 0 and (best_pos is None or pos < best_pos):
+            best_pos = pos
+            attrs["material"] = m
 
-    finishes = [f for f in FINISHES
-                if re.search(r"\b" + re.escape(f) + r"\b", t)]
+    finishes = [f for f in FINISHES if f in t]
     attrs["finish"] = finishes[0] if finishes else None
     attrs["finishes_all"] = finishes
 
@@ -503,41 +240,13 @@ def extract_attributes(text: str) -> dict:
             break
 
     for loc in LOCATIONS:
-        if re.search(r"\b" + re.escape(loc) + r"\b", t):
+        if loc in t:
             attrs["location"] = "facade" if loc == "façade" else loc
             break
 
-    u = PER_UNIT_RE.search(t) or UNIT_LABEL_RE.search(t)
+    u = PER_UNIT_RE.search(t) or UNIT_WORDS.search(t)
     if u:
         attrs["unit_hint"] = normalize_unit(u.group(1))
-
-    if re.search(r"\bwithout\s+civil\s+works\b|\bexcluding\s+civil\s+works\b", t):
-        attrs["civil_works"] = "excluded"
-    elif re.search(r"\bincluding\s+civil\s+works\b|\bwith\s+civil\s+works\b", t):
-        attrs["civil_works"] = "included"
-
-    if re.search(r"\bremovable\b|\bdemountable\b", t):
-        attrs["mobility"] = "removable"
-    elif re.search(r"\bmovable\b|\bmobile\b|\bportable\b|\bfree[\s\-]*standing\b", t):
-        attrs["mobility"] = "movable"
-    elif re.search(r"\bfixed\b|\bbase[\s\-]*plated\b|\bembedded\b", t):
-        attrs["mobility"] = "fixed"
-
-    cap = CAPACITY_L_RE.search(t)
-    if cap:
-        attrs["capacity_l"] = _first_number(cap)
-    else:
-        cap_m3 = CAPACITY_M3_RE.search(t)
-        if cap_m3:
-            value = _first_number(cap_m3)
-            attrs["capacity_l"] = value * 1000 if value is not None else None
-
-    compartments = COMPARTMENT_RE.search(t) or STREAM_RE.search(t)
-    if compartments:
-        word, number = compartments.groups()
-        mapping = {"single": 1, "double": 2, "dual": 2, "triple": 3,
-                   "quadruple": 4}
-        attrs["compartments"] = mapping.get(word, int(number) if number else None)
 
     b = re.search(r"brand\s*(?:&\s*origin)?\s*[\":]*\s*\"?([a-z0-9 \-]{2,30})\"?", t)
     if b:
@@ -558,87 +267,29 @@ def extract_attributes(text: str) -> dict:
             unit = next((g for g in ln.groups() if g in ("m", "mm")), "mm")
             attrs["length_mm"] = val * 1000 if unit == "m" else val
 
-    summed_length = SUM_LENGTH_RE.search(t)
-    if summed_length:
-        attrs["length_mm"] = sum(
-            float(part.strip()) for part in summed_length.group(1).split("+")
-        )
-
     h = HEIGHT_RE.search(t)
     if h:
         attrs["height_mm"] = _first_number(h)
 
-    dims, parsed_dimensions, dim_values = _extract_dimension_chain(t)
+    dims = DIMS_RE.search(t)
     if dims:
         attrs["dimensions"] = dims.group(0).strip()
-        before_dims = t[max(0, dims.start() - 32):dims.start()]
-        overall_dimensions = bool(re.search(
-            r"\b(?:overall\s+)?(?:size|dimensions?)\s*[:=\-]?\s*$",
-            before_dims,
-        ))
-        for field, value in parsed_dimensions.items():
-            # A labelled Size/Dimensions chain is authoritative over an
-            # earlier component statement such as "slats 600mm long".  A
-            # developed L=a+b length remains the one intentional exception.
-            if (attrs.get(field) is None or overall_dimensions) and not (
-                field == "length_mm" and summed_length
-            ):
-                attrs[field] = value
-
-    # For a circular bench the diameter is its price-defining overall span.
-    # Expose that span through the bench contract's length field, while
-    # retaining diameter_mm so the geometry remains explicit.
-    if (attrs["item_type"] == "bench" and attrs["length_mm"] is None
-            and attrs["diameter_mm"]):
-        attrs["length_mm"] = attrs["diameter_mm"]
-
-    # Some bench schedules state a single unambiguous overall size (for
-    # example "Heavy Duty Bench ... Size 2000 mm").  Do not apply this rule
-    # to other product families or when width/height wording is present.
-    if (attrs["item_type"] == "bench" and attrs["length_mm"] is None
-            and not any(attrs.get(field) for field in (
-                "width_mm", "height_mm", "diameter_mm"
-            ))):
-        single_size = re.search(r"\bsize\s*[:=\-]?\s*(\d+(?:\.\d+)?)\s*mm\b", t)
-        if single_size:
-            attrs["length_mm"] = float(single_size.group(1))
 
     sizes = {float(x) for x in SIZE_TOKEN_RE.findall(t)}
     # Numbers inside a dimension chain ("l 17770 x w 3050 x h 800mm") share
     # the trailing unit — without this, only the last "800mm" is seen and a
     # 17.7m item looks smaller than a 2.6m one.
     if dims:
-        sizes.update(dim_values)
-    sizes.update(
-        float(value) for value in (
-            attrs.get("length_mm"), attrs.get("width_mm"), attrs.get("height_mm"),
-            attrs.get("diameter_mm"),
-        ) if value
-    )
+        for g in dims.groups():
+            if g is not None:
+                try:
+                    sizes.add(float(g))
+                except ValueError:
+                    pass
     attrs["sizes_mm"] = sorted(sizes)
     # Characteristic overall size: the largest stated dimension. Lets the
     # comparison flag "same item type but a much bigger/smaller one".
     attrs["max_size_mm"] = attrs["sizes_mm"][-1] if attrs["sizes_mm"] else None
-    if attrs["length_mm"] and attrs["width_mm"]:
-        attrs["footprint_mm2"] = attrs["length_mm"] * attrs["width_mm"]
-    else:
-        attrs["footprint_mm2"] = None
-    if attrs["footprint_mm2"] and attrs["height_mm"]:
-        attrs["envelope_mm3"] = attrs["footprint_mm2"] * attrs["height_mm"]
-    else:
-        attrs["envelope_mm3"] = None
-    # Size proxy for price interpolation: prefer the stated length (the
-    # dominant cost driver), fall back to the largest dimension.
-    if attrs["length_mm"] and attrs["length_mm"] >= 100:
-        attrs["size_proxy"] = attrs["length_mm"]
-        attrs["size_proxy_kind"] = "length"
-    elif attrs["max_size_mm"] and attrs["max_size_mm"] >= 100:
-        attrs["size_proxy"] = attrs["max_size_mm"]
-        attrs["size_proxy_kind"] = "max"
-    else:
-        attrs["size_proxy"] = None
-        attrs["size_proxy_kind"] = None
-    attrs["subtype"] = detect_subtype(t, attrs)
     return attrs
 
 
@@ -696,9 +347,6 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
             mismatched.append(f"item_type: input={a} vs item={b}")
             differences.append(f"different item type ({b} instead of {a})")
 
-    judge("subtype", 3.0, lambda a, b: a == b,
-          lambda a, b: f"different product subtype ({b} instead of {a})")
-
     # Add-on features: an item carrying a costly extra the input lacks
     # (e.g. integrated seating) is a poor pricing comparable.
     feats_in = set(input_attrs.get("features") or [])
@@ -719,9 +367,7 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
             differences.append(
                 f"input includes {feat} which the match does not have")
             score += w * 0.25
-    # Generic "steel" must not receive full material credit against stainless
-    # or mild steel; those price very differently.
-    judge("material", 3.0, lambda a, b: a == b,
+    judge("material", 3.0, lambda a, b: a == b or a in b or b in a,
           lambda a, b: f"different material ({b} instead of {a})")
     judge("category", 2.0, lambda a, b: a == b)
     # Scopes within the convertible supply/install groups count as matched:
@@ -742,14 +388,6 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
           lambda a, b: f"different thickness ({b:g}mm instead of {a:g}mm)")
     judge("length_mm", 0.75, _close)
     judge("height_mm", 0.75, _close)
-    judge("capacity_l", 2.5, lambda a, b: _close(a, b, 0.20),
-          lambda a, b: f"different capacity ({b:g}L instead of {a:g}L)")
-    judge("compartments", 1.5, lambda a, b: a == b,
-          lambda a, b: f"different compartment count ({b} instead of {a})")
-    judge("mobility", 1.0, lambda a, b: a == b,
-          lambda a, b: f"different fixing/mobility ({b} instead of {a})")
-    judge("civil_works", 2.0, lambda a, b: a == b,
-          lambda a, b: f"different civil-works scope ({b} instead of {a})")
     judge("unit_hint", 1.0, lambda a, b: a == b,
           lambda a, b: f"different unit basis ({b} instead of {a})")
     # Overall size only means "product scale" for per-item products; for
@@ -757,7 +395,7 @@ def compare_attributes(input_attrs: dict, item_attrs: dict) -> dict:
     linear_units = ("m", "m2", "m3")
     if (input_attrs.get("unit_hint") not in linear_units
             and item_attrs.get("unit_hint") not in linear_units):
-        judge("max_size_mm", 1.5, lambda a, b: _close(a, b, 0.25),
+        judge("max_size_mm", 1.5, lambda a, b: _close(a, b, 0.35),
               lambda a, b: f"very different overall size ({b:g}mm vs {a:g}mm "
                            "largest dimension)")
     judge("location", 0.5, lambda a, b: a == b)

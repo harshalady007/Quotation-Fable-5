@@ -8,13 +8,7 @@ import streamlit as st
 
 import config
 from cleaner import EmptyDatasetError
-from context_modeling import (ContextModelEvaluationError,
-                              load_context_model_snapshot)
-from context_readiness import ContextReadinessError
-from data_corrections import DataCorrectionError
 from data_loader import DataLoadError
-from family_readiness import load_readiness_snapshot
-from production_pricing import family_contract
 from similarity_search import SearchError
 
 st.set_page_config(page_title="Quotation Pricing Bot", page_icon="💰", layout="wide")
@@ -23,10 +17,6 @@ st.caption(
     "Enter a new item or service description. The bot finds the most similar "
     "historical quotation items, compares pricing attributes like an "
     "estimator, and predicts a unit price."
-)
-st.info(
-    "Numeric estimates are enabled for every supported family. Confidence, "
-    "evidence tier and price intervals show when historical validation is weak."
 )
 
 
@@ -38,8 +28,7 @@ def load_engine():
 
 try:
     engine = load_engine()
-except (DataLoadError, EmptyDatasetError, DataCorrectionError,
-        ContextReadinessError) as exc:
+except (DataLoadError, EmptyDatasetError) as exc:
     st.error(f"Could not load the dataset: {exc}")
     st.info(
         "Check that the Excel file exists and set QUOTATION_DATA_PATH if it "
@@ -55,14 +44,12 @@ with st.sidebar:
     st.write(f"**File:** `{engine.data_path}`")
     st.write(f"**Sheet:** {engine.sheet}")
     st.write(f"**Usable rows:** {len(engine.dataset)}")
-    st.write(f"**Pricing eligible:** {engine.data_quality['pricing_eligible_rows']}")
-    st.caption("Unsafe or incomplete records remain visible but are quarantined from pricing.")
-    st.divider()
-    st.subheader("V3 context adjustments")
-    approved_context = engine.context_readiness.get("approved_adjustments", [])
-    st.write("**Approved:** " + (", ".join(approved_context) or "none"))
-    for field, evidence in engine.context_readiness.get("overall", {}).items():
-        st.caption(f"{field}: {evidence['status']} ({evidence['coverage']:.0%} coverage)")
+    if not config.DEEPSEEK_API_KEY:
+        st.warning(
+            "DEEPSEEK_API_KEY is not set — predictions will use the "
+            "statistical fallback (median/weighted average of matches). "
+            "See the README for how to set the key."
+        )
 
 description = st.text_area(
     "Item / service description",
@@ -71,112 +58,26 @@ description = st.text_area(
     height=100,
 )
 
-st.subheader("Confirmed pricing details")
-f1, f2, f3, f4 = st.columns(4)
-family = f1.selectbox("Product family (recommended)", ["", "planter", "litter bin",
-                                            "recycle bin", "bench", "bollard",
-                                            "bike rack"])
-unit = f2.selectbox("Unit (recommended)", ["", "no", "m", "m2", "set"])
-scope = f3.selectbox("Commercial scope (recommended)", ["", "supply only",
-                                              "supply and delivery",
-                                              "supply and install"])
-civil = f4.selectbox("Civil works", ["", "excluded", "included"])
-contract = family_contract(family) if family else None
-subtype = st.selectbox(
-    "Product subtype",
-    [""] + list((contract or {}).get("known_subtypes", [])),
-)
-try:
-    readiness = load_readiness_snapshot()
-    readiness_item = next(
-        (item for item in readiness.get("families", []) if item["family"] == family),
-        None,
-    )
-except ValueError:
-    readiness_item = None
-if readiness_item:
-    if readiness_item["status"] == "production":
-        st.success(
-            f"{family} is production approved: "
-            f"{readiness_item['within_20']:.1%} within ±20% over "
-            f"{readiness_item['priced_holdouts']} held-out cases."
-        )
-    else:
-        st.info(
-            f"{family} returns numeric estimates; historical validation remains "
-            "in V3 shadow. "
-            + "; ".join(readiness_item.get("release_gate_failures", []))
-        )
-if family:
-    try:
-        model_snapshot = load_context_model_snapshot()
-        family_models = [
-            item for item in model_snapshot.get("adjustments", [])
-            if item.get("family") == family
-        ]
-        ready_models = [
-            item["field"] for item in family_models
-            if item.get("status") == "ready_for_approval"
-        ]
-        blocked_models = sum(
-            item.get("status") not in {"ready_for_approval", "production"}
-            for item in family_models
-        )
-        st.caption(
-            "Offline context models ready for approval: "
-            f"{', '.join(ready_models) if ready_models else 'none'}; "
-            f"{blocked_models} blocked by evidence."
-        )
-    except ContextModelEvaluationError:
-        st.caption("Offline context-model readiness snapshot is unavailable.")
-f5, f6, f7, f8 = st.columns(4)
-material = f5.text_input("Primary material (recommended)")
-quantity = f6.number_input("Quantity", min_value=0.0, value=0.0)
-capacity_l = f7.number_input("Capacity (litres)", min_value=0.0, value=0.0)
-compartments = f8.number_input("Compartments / streams", min_value=0, value=0)
-f9, f10, f11, f12 = st.columns(4)
-mobility = f9.selectbox("Fixing / mobility", ["", "fixed", "movable", "removable"])
-diameter_mm = f10.number_input("Diameter (mm)", min_value=0.0, value=0.0)
-length_mm = f11.number_input("Length (mm)", min_value=0.0, value=0.0)
-width_mm = f12.number_input("Width (mm)", min_value=0.0, value=0.0)
-height_mm = st.number_input("Height (mm)", min_value=0.0, value=0.0)
-f13, f14, f15 = st.columns(3)
-supplier = f13.text_input("Supplier", help="Recorded for V3 evidence; not yet a price adjustment.")
-location = f14.text_input("Project location")
-quotation_date = f15.date_input("Quotation date", value=None)
-
 if st.button("Predict price", type="primary"):
     if not description.strip():
         st.warning("Please enter a description first.")
         st.stop()
     try:
         with st.spinner("Searching history and estimating price..."):
-            context = {
-                "product_family": family, "subtype": subtype,
-                "unit": unit, "scope": scope,
-                "civil_works": civil, "material": material,
-                "supplier": supplier, "location": location,
-                "quotation_date": quotation_date.isoformat() if quotation_date else None,
-                "quantity": quantity or None, "capacity_l": capacity_l or None,
-                "compartments": compartments or None, "mobility": mobility,
-                "diameter_mm": diameter_mm or None, "length_mm": length_mm or None,
-                "width_mm": width_mm or None, "height_mm": height_mm or None,
-            }
-            result = engine.predict_price(description, top_k=top_k,
-                                          pricing_context=context)
+            result = engine.predict_price(description, top_k=top_k)
     except (ValueError, SearchError) as exc:
         st.error(str(exc))
         st.stop()
 
     # ---- Headline result ----
-    st.info("Price estimate issued")
     c1, c2, c3, c4 = st.columns(4)
     price = result["predicted_unit_price"]
-    c1.metric("Estimated unit price",
+    c1.metric("Predicted unit price",
               f"{price:,.2f} {result['currency']}" if price is not None else "n/a")
     c2.metric("Unit", result["unit"] or "unknown")
     c3.metric("Confidence", result["confidence"])
-    c4.metric("Price source", result.get("price_source", "Comparable engine"))
+    c4.metric("Price source",
+              "Statistical fallback" if result["fallback_used"] else "DeepSeek AI")
 
     for w in result["warnings"]:
         st.warning(w)
@@ -186,7 +87,7 @@ if st.button("Predict price", type="primary"):
     if result.get("statistical_anchor") is not None:
         st.write(
             f"**Statistical anchor:** {result['statistical_anchor']:,.2f} "
-            f"{result['currency']} ({result.get('anchor_method', '')} over the "
+            f"{result['currency']} (similarity-weighted median of the "
             f"{len(result.get('pricing_matches_used', []))} strongest matches — "
             "the price is always computed from these, regardless of how many "
             "matches are displayed)"
@@ -221,8 +122,6 @@ if st.button("Predict price", type="primary"):
             "Rate (scope-adj)": m.get("scope_adjusted_rate") or m["rate"],
             "Amount": m["amount"] or "",
             "Category / scope": m["category"] or "",
-            "Source file": m.get("source") or "—",
-            "Date": m.get("date") or "—",
             "Matched attributes": "; ".join(m["matched_attributes"]) or "—",
             "Mismatched attributes": "; ".join(m["mismatched_attributes"]) or "—",
         })

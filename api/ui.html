@@ -34,13 +34,10 @@
     border: 1px solid var(--border); border-radius: 8px; font: inherit;
   }
   .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-  select, input {
+  select {
     background: var(--panel2); color: var(--text); border: 1px solid var(--border);
     border-radius: 8px; padding: 8px 10px; font: inherit;
   }
-  input { width: 100%; }
-  .formgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-top:12px; }
-  .field label { display:block; color:var(--muted); font-size:.78rem; margin-bottom:4px; }
   button {
     background: var(--accent); color: #fff; border: 0; border-radius: 8px;
     padding: 10px 22px; font: inherit; font-weight: 600; cursor: pointer;
@@ -58,11 +55,6 @@
   .err-box {
     background: color-mix(in srgb, var(--bad) 12%, transparent);
     border: 1px solid var(--bad); border-radius: 8px; padding: 10px 12px; margin-top: 12px;
-  }
-  .info-box {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
-    border-radius: 8px; padding: 10px 12px; margin-top: 12px; font-size: .9rem;
   }
   h2 { font-size: 1.05rem; margin: 20px 0 8px; }
   .tablewrap { overflow-x: auto; }
@@ -92,42 +84,6 @@
 
   <div class="card">
     <textarea id="desc" placeholder="e.g. Supply and install 50mm diameter stainless steel handrail with brushed finish"></textarea>
-    <div class="formgrid">
-      <div class="field"><label for="family">Product family (recommended)</label><select id="family">
-        <option value="">Select…</option><option>planter</option><option>litter bin</option>
-        <option>recycle bin</option><option>bench</option><option>bollard</option><option>bike rack</option>
-      </select></div>
-      <div class="field"><label for="subtype">Product subtype</label><select id="subtype">
-        <option value="">Not specified</option>
-      </select></div>
-      <div class="field"><label for="unit">Unit (recommended)</label><select id="unit">
-        <option value="">Select…</option><option value="no">No.</option><option value="m">Metre</option>
-        <option value="m2">m²</option><option value="set">Set</option>
-      </select></div>
-      <div class="field"><label for="scope">Commercial scope (recommended)</label><select id="scope">
-        <option value="">Select…</option><option value="supply only">Supply only</option>
-        <option value="supply and delivery">Supply and delivery</option>
-        <option value="supply and install">Supply and install</option>
-      </select></div>
-      <div class="field"><label for="civil">Civil works</label><select id="civil">
-        <option value="">Not applicable/unknown</option><option value="excluded">Excluded</option>
-        <option value="included">Included</option>
-      </select></div>
-      <div class="field"><label for="material">Primary material (recommended)</label><input id="material" placeholder="e.g. HDPE, mild steel"></div>
-      <div class="field"><label for="quantity">Quantity</label><input id="quantity" type="number" min="0" step="any"></div>
-      <div class="field"><label for="supplier">Supplier</label><input id="supplier" placeholder="Optional; recorded for V3 evidence"></div>
-      <div class="field"><label for="location">Project location</label><input id="location" placeholder="e.g. Dubai, Abu Dhabi"></div>
-      <div class="field"><label for="quotation-date">Quotation date</label><input id="quotation-date" type="date"></div>
-      <div class="field"><label for="capacity">Capacity (litres)</label><input id="capacity" type="number" min="0" step="any"></div>
-      <div class="field"><label for="compartments">Compartments / streams</label><input id="compartments" type="number" min="1" max="20" step="1"></div>
-      <div class="field"><label for="mobility">Fixing / mobility</label><select id="mobility">
-        <option value="">Not specified</option><option>fixed</option><option>movable</option><option>removable</option>
-      </select></div>
-      <div class="field"><label for="length">Length (mm)</label><input id="length" type="number" min="0" step="any"></div>
-      <div class="field"><label for="width">Width (mm)</label><input id="width" type="number" min="0" step="any"></div>
-      <div class="field"><label for="height">Height (mm)</label><input id="height" type="number" min="0" step="any"></div>
-      <div class="field"><label for="diameter">Diameter (mm)</label><input id="diameter" type="number" min="0" step="any"></div>
-    </div>
     <div class="row">
       <label for="topk">Top matches:</label>
       <select id="topk">
@@ -137,16 +93,13 @@
       <button id="go">Predict price</button>
       <span id="status" class="spinner"></span>
     </div>
-    <div id="family-readiness" class="info-box">Loading estimate and validation readiness…</div>
-    <div id="context-readiness" class="info-box">Loading contextual-adjustment evidence…</div>
     <div id="error" class="err-box hidden"></div>
   </div>
 
   <div id="result" class="hidden">
     <div class="card">
       <div class="metrics">
-        <div class="metric"><div class="label">Decision</div><div class="value" id="m-status">—</div></div>
-        <div class="metric"><div class="label">Estimated unit price</div><div class="value" id="m-price">—</div></div>
+        <div class="metric"><div class="label">Predicted unit price</div><div class="value" id="m-price">—</div></div>
         <div class="metric"><div class="label">Unit</div><div class="value" id="m-unit">—</div></div>
         <div class="metric"><div class="label">Confidence</div><div class="value" id="m-conf">—</div></div>
         <div class="metric"><div class="label">Price source</div><div class="value" id="m-src">—</div></div>
@@ -168,7 +121,6 @@
           <thead><tr>
             <th>#</th><th>Priced&nbsp;on</th><th>Similarity</th><th>Description</th><th>Unit</th>
             <th>Qty</th><th>Rate</th><th>Amount</th><th>Category / scope</th>
-            <th>Source file</th><th>Date</th>
             <th>Matched</th><th>Mismatched</th>
           </tr></thead>
           <tbody id="matches"></tbody>
@@ -177,7 +129,7 @@
     </div>
   </div>
 
-  <footer>API docs: <a href="/docs">/docs</a> · Health: <a href="/health">/health</a> · V4 workflow: <a href="/workflow/readiness">/workflow/readiness</a></footer>
+  <footer>API docs: <a href="/docs">/docs</a> · Health: <a href="/health">/health</a></footer>
 </div>
 
 <script>
@@ -186,72 +138,6 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt = n => n == null ? "n/a" :
   Number(n).toLocaleString(undefined, {maximumFractionDigits: 2});
-let readinessFamilies = {};
-let contextReadiness = {};
-let contextModelReadiness = {};
-let estimateEnabledFamilies = [];
-
-async function loadReadiness() {
-  try {
-    const response = await fetch("/readiness");
-    if (!response.ok) throw new Error("readiness endpoint unavailable");
-    const data = await response.json();
-    readinessFamilies = Object.fromEntries((data.families || []).map(item => [item.family, item]));
-    contextReadiness = data.context_readiness || {};
-    contextModelReadiness = data.context_model_readiness || {};
-    estimateEnabledFamilies = data.estimate_enabled_families || [];
-    renderFamilyReadiness();
-  } catch (error) {
-    $("family-readiness").textContent = "Historical validation readiness could not be loaded; numeric estimates remain explicitly uncertainty-labelled.";
-    $("context-readiness").textContent = "Context readiness could not be loaded; no contextual adjustment will be applied.";
-  }
-}
-
-function renderFamilyReadiness() {
-  const family = $("family").value;
-  const item = readinessFamilies[family];
-  const contextFields = (contextReadiness.families || {})[family] || contextReadiness.overall || {};
-  const approvedContext = contextReadiness.approved_adjustments || [];
-  const modelReady = Object.values(contextFields).filter(value => value.status === "ready_for_modeling").map(value => value.field);
-  const familyModels = (contextModelReadiness.adjustments || []).filter(value => value.family === family);
-  const statisticallyReady = familyModels.filter(value => value.status === "ready_for_approval").map(value => value.field);
-  const blockedModels = familyModels.filter(value => !["ready_for_approval", "production"].includes(value.status)).length;
-  $("context-readiness").textContent =
-    `Context adjustments approved: ${approvedContext.length ? approvedContext.join(", ") : "none"}. ` +
-    `Data-ready: ${modelReady.length ? modelReady.join(", ") : "none"}. ` +
-    `Shadow models ready: ${statisticallyReady.length ? statisticallyReady.join(", ") : "none"}; ` +
-    `${blockedModels} blocked by evidence.`;
-  const subtype = $("subtype");
-  const selectedSubtype = subtype.value;
-  const known = item?.contract?.known_subtypes || [];
-  subtype.innerHTML = '<option value="">Not specified</option>' +
-    known.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
-  if (known.includes(selectedSubtype)) subtype.value = selectedSubtype;
-
-  if (!family) {
-    $("family-readiness").textContent =
-      "Numeric estimates are enabled for every supported family. Select a family to see its independent historical-validation status.";
-    return;
-  }
-  if (!item) {
-    $("family-readiness").textContent =
-      "This family has no validation snapshot. A numeric estimate can still be returned with very-low confidence.";
-    return;
-  }
-  if (item.status === "production") {
-    $("family-readiness").textContent =
-      `${family}: production approved — ${(100 * item.within_20).toFixed(1)}% within ±20% across ${item.priced_holdouts} quotation-lineage-held-out cases.`;
-  } else {
-    const failures = (item.release_gate_failures || []).join("; ");
-    $("family-readiness").textContent =
-      `${family}: numeric estimates enabled; validation remains in shadow — ${item.priced_holdouts} priced holdouts, ` +
-      `${item.within_20 == null ? "no accuracy result" : (100 * item.within_20).toFixed(1) + "% within ±20%"}. ` +
-      `Evidence limitations: ${failures}.`;
-  }
-}
-
-$("family").addEventListener("change", renderFamilyReadiness);
-loadReadiness();
 
 $("go").addEventListener("click", predict);
 $("desc").addEventListener("keydown", e => {
@@ -270,7 +156,7 @@ async function predict() {
     const resp = await fetch("/predict", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(buildPayload(description)),
+      body: JSON.stringify({description, top_k: Number($("topk").value)}),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -287,29 +173,6 @@ async function predict() {
   }
 }
 
-function buildPayload(description) {
-  const payload = {
-    description,
-    top_k: Number($("topk").value),
-    product_family: $("family").value || null,
-    subtype: $("subtype").value || null,
-    unit: $("unit").value || null,
-    scope: $("scope").value || null,
-    civil_works: $("civil").value || null,
-    material: $("material").value.trim() || null,
-    supplier: $("supplier").value.trim() || null,
-    location: $("location").value.trim() || null,
-    quotation_date: $("quotation-date").value || null,
-    mobility: $("mobility").value || null,
-  };
-  const numeric = {quantity:"quantity", capacity:"capacity_l", compartments:"compartments", length:"length_mm",
-                   width:"width_mm", height:"height_mm", diameter:"diameter_mm"};
-  for (const [id, key] of Object.entries(numeric)) {
-    if ($(id).value) payload[key] = Number($(id).value);
-  }
-  return payload;
-}
-
 function showError(msg) {
   const el = $("error");
   el.textContent = msg;
@@ -317,20 +180,21 @@ function showError(msg) {
 }
 
 function render(d) {
-  $("m-status").textContent = "Price estimate";
   $("m-price").textContent = d.predicted_unit_price == null ? "n/a"
     : `${fmt(d.predicted_unit_price)} ${esc(d.currency)}`;
   $("m-unit").textContent = d.unit || "unknown";
   $("m-conf").textContent = d.confidence || "—";
-  $("m-src").textContent = d.price_source || "Comparable engine";
+  $("m-src").textContent = d.fallback_used ? "Statistical fallback" : "DeepSeek AI";
 
   $("warnings").innerHTML = (d.warnings || [])
     .map(w => `<div class="warn-box">⚠️ ${esc(w)}</div>`).join("");
 
   $("reasoning").textContent = d.reasoning || "No reasoning returned.";
   $("anchor").innerHTML = d.statistical_anchor != null
-    ? `<p><strong>Comparable estimate anchor:</strong>
-       ${fmt(d.statistical_anchor)} ${esc(d.currency)} (${esc(d.anchor_method || "comparables")})</p>` : "";
+    ? `<p><strong>Statistical anchor:</strong> ${fmt(d.statistical_anchor)} ${esc(d.currency)}
+       (similarity-weighted median of the ${ (d.pricing_matches_used || []).length }
+       strongest matches — the price is always computed from these,
+       regardless of how many matches you display)</p>` : "";
   $("basis").innerHTML = d.price_basis
     ? `<p><strong>Price basis:</strong> ${esc(d.price_basis)}</p>` : "";
   $("adjustments").innerHTML = (d.adjustments || []).length
@@ -359,8 +223,6 @@ function render(d) {
           ? `<br><small>≈${fmt(m.scope_adjusted_rate)} scope-adj</small>` : ""}</td>
       <td class="num">${fmt(m.amount)}</td>
       <td>${esc(m.category || "")}</td>
-      <td class="desc" style="max-width:160px;word-break:break-all"><small>${esc(m.source || "—")}</small></td>
-      <td style="white-space:nowrap"><small>${esc(m.date || "—")}</small></td>
       <td>${(m.matched_attributes || []).map(a => `<span class="tag match">${esc(a)}</span>`).join("") || "—"}</td>
       <td>${(m.mismatched_attributes || []).map(a => `<span class="tag miss">${esc(a)}</span>`).join("") || "—"}</td>
     </tr>`).join("");

@@ -1,16 +1,13 @@
-"""Production orchestration for guarded historical-comparable pricing."""
+"""Ties loading, cleaning, search and DeepSeek pricing into one API."""
 
 import logging
 from functools import lru_cache
 
 import config
-from context_readiness import (build_context_readiness,
-                               context_adjustment_warnings)
-from data_corrections import correction_summary
-from data_quality import quality_summary
-from pricing_dataset import load_pricing_dataset
-from production_pricing import (PRICING_ENGINE_VERSION, PRICING_POLICY,
-                                price_from_comparables)
+from cleaner import clean_dataset
+from data_loader import load_dataset
+from deepseek_pricing import (predict_price_with_deepseek,
+                              scope_adjusted_rate, weighted_median_rate)
 from similarity_search import SimilaritySearcher
 
 logger = logging.getLogger(__name__)
@@ -60,119 +57,98 @@ def select_pricing_matches(matches: list, input_type: str | None = None,
 class PricingEngine:
     def __init__(self, data_path: str | None = None):
         self.data_path = data_path or config.DATA_PATH
-        self.dataset = load_pricing_dataset(self.data_path)
-        self.data_quality = quality_summary(self.dataset)
-        self.data_quality["corrections"] = correction_summary(self.dataset)
-        self.column_mapping = self.dataset.attrs.get("column_mapping", {})
-        self.summary_context = self.dataset.attrs.get("summary_context", {})
-        self.sheet = self.dataset.attrs.get("sheet", "")
+        raw = load_dataset(self.data_path)          # raises DataLoadError
+        self.dataset = clean_dataset(raw)           # raises EmptyDatasetError
+        self.column_mapping = raw.attrs.get("column_mapping", {})
+        self.sheet = raw.attrs.get("sheet", "")
         self.searcher = SimilaritySearcher(self.dataset)
-        self.context_readiness = build_context_readiness(
-            self.dataset, self.searcher.item_attrs
-        )
         logger.info("PricingEngine ready: %d usable rows from sheet %r",
                     len(self.dataset), self.sheet)
 
-    def predict_price(self, input_description: str, top_k: int = 5,
-                      pricing_context: dict | None = None) -> dict:
-        """Production pipeline: retrieve -> validate -> estimate.
-
-        ``pricing_context`` contains user-confirmed structured fields.  Free
-        text remains supported for backward compatibility. Missing fields or
-        sparse evidence lower confidence and widen the interval; they no
-        longer suppress the numeric estimate.
-        """
+    def predict_price(self, input_description: str, top_k: int = 5) -> dict:
+        """Full pipeline: search -> compare -> DeepSeek (or fallback) -> result."""
         if not input_description or not str(input_description).strip():
             raise ValueError("Please enter an item or service description.")
 
-        search = self.searcher.search(
-            input_description,
-            top_k=max(1, int(top_k)),
-            pricing_context=pricing_context,
-        )
-        candidates = search["candidate_matches"]
-        decision = price_from_comparables(search["input_attributes"], candidates)
-        pricing_matches = decision["comparables"]
+        # Retrieve enough candidates for both the display table (top_k) and
+        # the pricing set, which is always chosen by the same fixed rule so
+        # the predicted price does not depend on top_k.
+        pool_size = max(int(top_k), config.PRICING_MAX_MATCHES)
+        search = self.searcher.search(input_description, top_k=pool_size)
+        pool = search["matches"]
+        input_type = search["input_attributes"].get("item_type")
+        input_unit = search["input_attributes"].get("unit_hint")
+        pricing_matches = select_pricing_matches(pool, input_type, input_unit)
         pricing_ranks = {m["rank"] for m in pricing_matches}
-        pricing_by_rank = {m["rank"]: m for m in pricing_matches}
-        matches = search["matches"]
-        for match in candidates:
-            match["used_for_pricing"] = match["rank"] in pricing_ranks
-            evidence = pricing_by_rank.get(match["rank"])
-            match["scope_adjusted_rate"] = (
-                evidence.get("scope_adjusted_rate", evidence.get("rate"))
-                if evidence else match.get("rate")
-            )
+        matches = pool[:max(int(top_k), 1)]
+        input_scope = search["input_attributes"].get("scope")
+        for m in pool:
+            m["used_for_pricing"] = m["rank"] in pricing_ranks
+            m["scope_adjusted_rate"] = scope_adjusted_rate(
+                m.get("rate"), m.get("scope"), input_scope)
 
-        warnings = list(decision["review_reasons"])
-        warnings.extend(context_adjustment_warnings(
-            search["input_attributes"], self.context_readiness
-        ))
-        quarantined_displayed = [m for m in matches if not m.get("pricing_eligible", True)]
-        if quarantined_displayed:
+        warnings = []
+        if input_unit and not any((m.get("unit_norm") or "") == input_unit
+                                  for m in pricing_matches):
+            units_found = sorted({m.get("unit_norm") or "unknown"
+                                  for m in pricing_matches})
             warnings.append(
-                f"{len(quarantined_displayed)} displayed historical match(es) "
-                "are quarantined from the estimate calculation because of "
-                "data-quality defects."
+                f"The input is priced per '{input_unit}' but no historical "
+                f"match uses that unit (matches are per {', '.join(units_found)}). "
+                "Rates are NOT directly comparable — treat this estimate as "
+                "indicative only."
+            )
+        if input_type and not any(m.get("item_type") == input_type
+                                  for m in pricing_matches):
+            warnings.append(
+                f"No historical items of type '{input_type}' were found in "
+                "the dataset; the price is based on the closest other items "
+                "and should be treated with extra caution."
+            )
+        input_size = search["input_attributes"].get("max_size_mm")
+        if input_size and pricing_matches:
+            comp_sizes = [m for m in pricing_matches
+                          if any("overall size" in d for d in m["differences"])]
+            if len(comp_sizes) == len(pricing_matches):
+                warnings.append(
+                    "All historical matches are a very different overall size "
+                    "from the input item; the rate has been adjusted for size "
+                    "but should be verified."
+                )
+        if search["input_attributes"].get("scope_assumed"):
+            warnings.append(
+                "No work scope stated in the input; assumed 'supply and "
+                "install' by default. Mention e.g. 'supply only' to override."
+            )
+        if search["weak_matches"]:
+            warnings.append(
+                f"Best match similarity is only {search['best_score']:.2f}; "
+                "no strong historical match was found. Treat the prediction "
+                "with caution."
             )
 
-        if decision.get("fallback_used"):
-            reasoning = (
-                f"Numeric estimate based on {len(pricing_matches)} independent, "
-                "quality-eligible historical quotation lineages using evidence "
-                f"tier '{decision.get('evidence_tier')}'. A robust weighted "
-                "median limits the influence of individual rates; the wider "
-                "interval and confidence label show the remaining uncertainty."
-            )
-        else:
-            reasoning = (
-                f"Numeric estimate based on {len(pricing_matches)} validated "
-                "same-family, same-unit and same-scope historical comparables. "
-                "A robust weighted median limits the influence of individual rates."
-            )
+        prediction = predict_price_with_deepseek(
+            input_description, search["input_attributes"], pricing_matches,
+            search["weak_matches"],
+        )
+        anchor = weighted_median_rate(pricing_matches)
 
         return {
-            "pricing_version": PRICING_ENGINE_VERSION,
-            "pricing_policy": PRICING_POLICY,
-            "status": decision["status"],
             "input_description": input_description,
             "input_attributes": search["input_attributes"],
-            "statistical_anchor": decision.get("indicative_price"),
-            "anchor_method": decision["pricing_method"],
+            "statistical_anchor": round(anchor, 2) if anchor is not None else None,
             "pricing_matches_used": sorted(pricing_ranks),
-            "predicted_unit_price": decision["predicted_unit_price"],
-            "indicative_price": decision.get("indicative_price"),
-            "price_interval": decision.get("price_interval"),
-            "currency": config.DEFAULT_CURRENCY,
-            "unit": decision.get("estimated_unit")
-                    or search["input_attributes"].get("unit_hint")
-                    or "unknown",
-            "pricing_scope": decision.get("estimated_scope"),
-            "confidence": decision["confidence"],
-            "reasoning": reasoning,
-            "price_basis": decision["pricing_method"],
-            "adjustments": [],
-            "context_adjustments": {
-                "mode": self.context_readiness.get("mode", "shadow"),
-                "applied": [],
-                "factor": 1.0,
-            },
-            "fallback_used": bool(decision.get("fallback_used")),
-            "evidence_tier": decision.get("evidence_tier"),
-            "release_gate_approved": bool(
-                decision.get("release_gate_approved")
-            ),
-            "price_source": (
-                "Universal validated-comparable estimate"
-                if decision.get("fallback_used")
-                else "Guarded validated-comparable estimate"
-            ),
-            "review_reasons": decision["review_reasons"],
-            "estimate_warnings": decision["review_reasons"],
+            "predicted_unit_price": prediction["predicted_unit_price"],
+            "currency": prediction["currency"],
+            "unit": prediction["unit"],
+            "confidence": prediction["confidence"],
+            "reasoning": prediction["reasoning"],
+            "price_basis": prediction.get("price_basis", ""),
+            "adjustments": prediction.get("adjustments", []),
+            "fallback_used": prediction.get("fallback_used", False),
             "matches": matches,
             "weak_matches": search["weak_matches"],
-            "warnings": warnings,
-            "data_quality": self.data_quality,
+            "warnings": warnings + prediction.get("warnings", []),
         }
 
 
