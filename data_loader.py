@@ -7,12 +7,24 @@ Internal fields:
     category, section, location, remarks, source, date
 """
 
+import hashlib
 import logging
+import re
 from pathlib import Path
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def image_key(source, item, desc) -> str:
+    """Stable key linking a product row to its extracted image file
+    (data/images/<key>.png), derived from the row's identifying text."""
+    joined = "|".join(
+        re.sub(r"\s+", " ", str(x if x is not None else "").strip().lower())
+        for x in (source, item, desc)
+    )
+    return hashlib.sha1(joined.encode()).hexdigest()[:12]
 
 
 class DataLoadError(Exception):
@@ -131,6 +143,11 @@ def load_dataset(path: str) -> pd.DataFrame:
     # Derive rate = amount / quantity where rate is missing and quantity valid.
     need_rate = out["rate"].isna() & out["amount"].notna() & (out["quantity"] > 0)
     out.loc[need_rate, "rate"] = out.loc[need_rate, "amount"] / out.loc[need_rate, "quantity"]
+
+    out["image_key"] = [
+        image_key(s, i, d)
+        for s, i, d in zip(out["source"], out["item_name"], out["description"])
+    ]
 
     out.attrs["sheet"] = sheet
     out.attrs["column_mapping"] = {k: str(v) for k, v in mapping.items()}

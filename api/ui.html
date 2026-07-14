@@ -120,7 +120,9 @@
         <table>
           <thead><tr>
             <th>#</th><th>Priced&nbsp;on</th><th>Similarity</th><th>Description</th><th>Unit</th>
+            <th>Image</th>
             <th>Qty</th><th>Rate</th><th>Amount</th><th>Category / scope</th>
+            <th>Source file</th><th>Date</th>
             <th>Matched</th><th>Mismatched</th>
           </tr></thead>
           <tbody id="matches"></tbody>
@@ -217,12 +219,17 @@ function render(d) {
         <small>text ${(m.text_similarity ?? 0).toFixed(2)} · attr ${(m.attribute_score ?? 0).toFixed(2)}</small></td>
       <td class="desc">${esc(m.description)}</td>
       <td>${esc(m.unit || "")}</td>
+      <td>${m.image
+        ? `<a href="/images/${esc(m.image)}" target="_blank"><img src="/images/${esc(m.image)}" alt="product" style="max-width:80px;max-height:80px;border-radius:6px"></a>`
+        : "—"}</td>
       <td class="num">${fmt(m.quantity)}</td>
       <td class="num"><strong>${fmt(m.rate)}</strong>${
         m.scope_adjusted_rate && m.scope_adjusted_rate !== m.rate
           ? `<br><small>≈${fmt(m.scope_adjusted_rate)} scope-adj</small>` : ""}</td>
       <td class="num">${fmt(m.amount)}</td>
       <td>${esc(m.category || "")}</td>
+      <td class="desc" style="max-width:160px;word-break:break-all"><small>${esc(m.source || "—")}</small></td>
+      <td style="white-space:nowrap"><small>${esc(m.date || "—")}</small></td>
       <td>${(m.matched_attributes || []).map(a => `<span class="tag match">${esc(a)}</span>`).join("") || "—"}</td>
       <td>${(m.mismatched_attributes || []).map(a => `<span class="tag miss">${esc(a)}</span>`).join("") || "—"}</td>
     </tr>`).join("");

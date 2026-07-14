@@ -23,6 +23,11 @@ class SimilaritySearcher:
         if "search_text" not in df.columns:
             raise SearchError("Dataset missing 'search_text'; run cleaner first.")
         self.df = df.reset_index(drop=True)
+        # Map image_key -> actual filename (extension varies) once.
+        self.image_files = {}
+        if config.IMAGES_DIR.is_dir():
+            for p in config.IMAGES_DIR.iterdir():
+                self.image_files[p.stem] = p.name
         self.vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1,
                                           sublinear_tf=True)
         self.matrix = self.vectorizer.fit_transform(self.df["search_text"])
@@ -112,6 +117,8 @@ class SimilaritySearcher:
                 "amount": _safe_num(row.get("amount")),
                 "category": _safe_str(row.get("category")) or _safe_str(row.get("section")),
                 "source": _safe_str(row.get("source")),
+                "date": _safe_str(row.get("date")),
+                "image": self.image_files.get(str(row.get("image_key") or "")),
                 "similarity_score": round(final, 4),
                 "text_similarity": round(text_score, 4),
                 "attribute_score": comparison["attribute_score"],

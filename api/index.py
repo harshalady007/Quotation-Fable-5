@@ -13,8 +13,10 @@ from pathlib import Path
 # Make the project root importable when Vercel runs this file from api/.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import re
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 import config
@@ -66,6 +68,22 @@ def root():
             "<h1>Quotation Pricing Bot API</h1>"
             "<p>UI file missing. Use <a href='/docs'>/docs</a> to call the "
             "API directly.</p>", status_code=200)
+
+
+_IMAGE_NAME = re.compile(r"^[0-9a-f]{12}\.(png|jpg)$")
+
+
+@app.get("/images/{name}")
+def product_image(name: str):
+    """Serve an extracted product image by its content-key filename."""
+    if not _IMAGE_NAME.match(name):
+        raise HTTPException(status_code=404, detail="Image not found.")
+    path = config.IMAGES_DIR / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    media = "image/png" if name.endswith(".png") else "image/jpeg"
+    return Response(path.read_bytes(), media_type=media,
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api")

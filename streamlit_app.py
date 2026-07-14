@@ -122,10 +122,17 @@ if st.button("Predict price", type="primary"):
             "Rate (scope-adj)": m.get("scope_adjusted_rate") or m["rate"],
             "Amount": m["amount"] or "",
             "Category / scope": m["category"] or "",
+            "Source file": m.get("source") or "—",
+            "Date": m.get("date") or "—",
+            "Image": (str(config.IMAGES_DIR / m["image"])
+                      if m.get("image") else None),
             "Matched attributes": "; ".join(m["matched_attributes"]) or "—",
             "Mismatched attributes": "; ".join(m["mismatched_attributes"]) or "—",
         })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(
+        pd.DataFrame(rows), use_container_width=True, hide_index=True,
+        column_config={"Image": st.column_config.ImageColumn("Image")},
+    )
 
     # ---- Per-match comparison detail ----
     st.subheader("Input vs match comparison")
@@ -135,6 +142,10 @@ if st.button("Predict price", type="primary"):
             f"#{m['rank']} — {m['description'].splitlines()[0][:80]} "
             f"(rate {rate}, similarity {m['similarity_score']:.2f})"
         ):
+            if m.get("image"):
+                img_path = config.IMAGES_DIR / m["image"]
+                if img_path.is_file():
+                    st.image(str(img_path), width=220)
             st.write(f"**Why it matched:** {m['explanation']}")
             cc1, cc2, cc3 = st.columns(3)
             cc1.write("**Matched**")

@@ -16,6 +16,10 @@ DATA_PATH = os.environ.get(
     str(PROJECT_ROOT / "data" / "quotation_items.xlsx"),
 )
 
+# Product images extracted from the Excel, named <image_key>.png/.jpg.
+IMAGES_DIR = Path(os.environ.get("QUOTATION_IMAGES_DIR",
+                                 str(PROJECT_ROOT / "data" / "images")))
+
 # DeepSeek API settings. The key MUST come from the environment.
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
